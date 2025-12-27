@@ -1,0 +1,21 @@
+# Web / API
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# SSH
+paramiko==3.5.0
+
+# Config / Parsing
+pydantic==2.10.4
+pydantic-settings==2.6.1
+PyYAML==6.0.2
+
+# Sécurité / utilitaires
+cryptography==44.0.0
+python-dotenv==1.0.1
+
+# Observabilité / logs
+structlog==24.4.0
+
+# Tests
+pytest==8.3.4

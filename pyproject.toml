@@ -1,0 +1,39 @@
+[project]
+name = "aos-server"
+version = "1.0.0"
+description = "MCP Server for Alcatel-Lucent Enterprise OmniSwitch network devices"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Unlicense" }
+authors = [{ name = "0xEkho", email = "contact@example.com" }]
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.24",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.2",
+  "PyYAML>=6.0",
+  "paramiko>=3.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.4",
+  "mypy>=1.8",
+  "types-PyYAML",
+]
+
+[project.scripts]
+aos-server = "aos_server.main:cli"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

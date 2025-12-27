@@ -1,0 +1,59 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv
+venv
+ENV
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.ruff_cache
+
+# Logs
+*.log
+server.log
+
+# Sensitive data
+known_hosts
+*.cfg
+!config.example.yaml
+.env
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation (included in image)
+# But exclude drafts
+CHANGES_SUMMARY.md
+PROJECT_REVIEW.md
+
+# Deployment files (not needed in image)
+deploy/
+docker-compose*.yaml
+.dockerignore

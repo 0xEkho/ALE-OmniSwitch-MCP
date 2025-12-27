@@ -1,0 +1,39 @@
+# AOS Server Configuration Example
+#
+# Copy this file to config.yaml and customize for your environment
+
+ssh:
+  strict_host_key_checking: true
+  known_hosts_file: ./known_hosts
+  connect_timeout_s: 10
+  banner_timeout_s: 10
+  auth_timeout_s: 10
+  default_command_timeout_s: 30
+  max_output_bytes: 200000
+  pre_commands: []
+  keepalive_s: 30
+
+command_policy:
+  allow_regex:
+    - '^show\s+.*$'
+    - '^vrf\s+\S+\s+show\s+.*$'  # VRF-scoped show commands
+    - '^ping\s+.*$'
+    - '^traceroute\s+.*$'
+    - '^lanpower\s+port\s+.*\s+admin-state\s+(enable|disable)$'  # PoE restart commands
+    - '^write\s+terminal$'  # Configuration backup
+  deny_regex: []
+  max_command_length: 512
+  deny_multiline: true
+  strip_ansi: true
+  redactions:
+    - pattern: '(?i)(password\s+)(\S+)'
+      replacement: '\1***'
+    - pattern: '(?i)(community\s+)(\S+)'
+      replacement: '\1***'
+
+templates:
+  ping: "ping {destination}"
+  traceroute: "traceroute {destination}"
+
+# No authz enforcement - security handled by MCP platform
+authz: {}

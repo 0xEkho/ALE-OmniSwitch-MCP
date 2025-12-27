@@ -1,0 +1,94 @@
+# Example Docker Compose Configuration for ALE OmniSwitch MCP Server
+#
+# Copy this file to docker-compose.yaml and customize for your environment
+#
+# Quick Start:
+#   1. Copy: cp docker-compose.example.yaml docker-compose.yaml
+#   2. Create .env file with credentials:
+#      echo "AOS_DEVICE_USERNAME=your_username" > .env
+#      echo "AOS_DEVICE_PASSWORD=your_password" >> .env
+#   3. Copy config: cp ../config.example.yaml ../config.yaml
+#   4. Run: docker-compose up -d
+
+version: "3.8"
+
+services:
+  aos-mcp-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: aos-mcp-server
+    restart: unless-stopped
+    
+    environment:
+      # Configuration file path
+      - AOS_CONFIG_FILE=/app/config.yaml
+      - AOS_LOG_LEVEL=INFO
+      
+      # SSH credentials (use .env file or Docker secrets in production)
+      - AOS_DEVICE_USERNAME=${AOS_DEVICE_USERNAME:-switch_user}
+      - AOS_DEVICE_PASSWORD=${AOS_DEVICE_PASSWORD:-change_me}
+      
+      # Optional: API authentication (if implementing API keys)
+      # - AOS_INTERNAL_API_KEY=${AOS_INTERNAL_API_KEY:-change-me}
+      
+      # Optional: Jump host configuration
+      # - AOS_JUMP_USERNAME=${AOS_JUMP_USERNAME:-}
+      # - AOS_JUMP_PASSWORD=${AOS_JUMP_PASSWORD:-}
+    
+    volumes:
+      # Mount configuration (customize config.yaml for your environment)
+      - ../config.yaml:/app/config.yaml:ro
+      
+      # Mount SSH known_hosts for host key verification
+      - ../known_hosts:/app/known_hosts:ro
+      
+      # Optional: Persistent logs
+      # - ./logs:/app/logs
+      
+      # Optional: Persistent data
+      # - ./data:/app/data
+    
+    ports:
+      - "8080:8080"
+    
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Production considerations:
+# 
+# 1. Use Docker secrets for credentials:
+#    secrets:
+#      - aos_device_password
+#    environment:
+#      - AOS_DEVICE_PASSWORD_FILE=/run/secrets/aos_device_password
+#
+# 2. Use dedicated network:
+#    networks:
+#      - aos-mcp-network
+#
+# 3. Enable TLS/SSL with reverse proxy (nginx, traefik)
+#
+# 4. Use health checks for monitoring
+#
+# 5. Configure backup strategy for config.yaml and known_hosts

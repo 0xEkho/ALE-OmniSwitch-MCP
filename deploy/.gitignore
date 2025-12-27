@@ -1,0 +1,9 @@
+# Ignore actual docker-compose.yaml (use example)
+docker-compose.yaml
+
+# Ignore environment file with credentials
+.env
+
+# Ignore runtime data
+logs/
+data/
