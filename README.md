@@ -247,9 +247,7 @@ docker-compose down
 ## 📚 Documentation
 
 - **[examples/](examples/)** - 12 detailed usage examples with curl commands
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and architecture
-- **[docs/SECURITY.md](docs/SECURITY.md)** - Security best practices
-- **[docs/MCP_COMPLIANCE.md](docs/MCP_COMPLIANCE.md)** - MCP protocol implementation
+- **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)** - Infrastructure vision and integration patterns
 - **[deploy/README.md](deploy/README.md)** - Docker deployment guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 
