@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import string
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +28,33 @@ from .stp_parse import (
     parse_show_spantree_cist,
     parse_show_spantree_ports,
     parse_show_spantree_vlan
+)
+from .health_parse import (
+    parse_show_health,
+    parse_show_chassis,
+    parse_show_temperature,
+    parse_show_fan,
+    parse_show_power_supply,
+    parse_show_cmm,
+    analyze_chassis_health
+)
+from .lacp_parse import (
+    parse_show_linkagg,
+    parse_show_linkagg_detail,
+    parse_show_lacp,
+    analyze_lacp_issues
+)
+from .ntp_parse import (
+    parse_show_ntp_status,
+    parse_show_ntp_client_server_list,
+    parse_show_ntp_peers,
+    analyze_ntp_status
+)
+from .dhcp_parse import (
+    parse_show_dhcp_relay_interface,
+    parse_show_dhcp_relay_statistics,
+    parse_show_dhcp_relay_counters,
+    analyze_dhcp_relay
 )
 
 class ArgsDevicesList(BaseModel):
@@ -409,6 +437,136 @@ class ArgsSpantreeAudit(BaseModel):
     port: Optional[int] = Field(default=22, description="SSH port")
 
 
+class ArgsHealthMonitor(BaseModel):
+    """Arguments for health monitoring tool."""
+    host: str = Field(description="Target switch IP address or hostname")
+    port: Optional[int] = Field(default=22, description="SSH port")
+    detailed: bool = Field(default=False, description="Include detailed per-module information")
+
+
+class HealthModuleInfo(BaseModel):
+    """Health information for a module."""
+    module_name: str
+    slot: str
+    status: str
+    cpu_usage_percent: int
+    memory_usage_percent: int
+    rx_errors: int
+    tx_errors: int
+
+
+class HealthMonitorResult(BaseModel):
+    """Health monitoring result."""
+    host: str
+    overall_status: str = Field(description="Overall health status (OK, WARNING, CRITICAL)")
+    modules: List[HealthModuleInfo] = Field(description="Module health information")
+    issues: List[str] = Field(default_factory=list, description="Detected health issues")
+    duration_ms: int
+    commands_executed: List[str]
+
+
+class ArgsChassisStatus(BaseModel):
+    """Arguments for chassis status tool."""
+    host: str = Field(description="Target switch IP address or hostname")
+    port: Optional[int] = Field(default=22, description="SSH port")
+    include_temperature: bool = Field(default=True, description="Include temperature sensors")
+    include_fans: bool = Field(default=True, description="Include fan status")
+    include_power: bool = Field(default=True, description="Include power supply status")
+
+
+class ChassisStatusResult(BaseModel):
+    """Chassis status result."""
+    host: str
+    chassis_type: Optional[str] = None
+    serial_number: Optional[str] = None
+    hardware_revision: Optional[str] = None
+    mac_address: Optional[str] = None
+    cmm: Optional[Dict[str, Any]] = Field(default=None, description="CMM status")
+    temperature: Optional[Dict[str, Any]] = Field(default=None, description="Temperature sensors")
+    fans: List[Dict[str, Any]] = Field(default_factory=list, description="Fan status")
+    power_supplies: List[Dict[str, Any]] = Field(default_factory=list, description="Power supply status")
+    issues: List[str] = Field(default_factory=list, description="Detected hardware issues")
+    duration_ms: int
+    commands_executed: List[str]
+
+
+class ArgsMacLookup(BaseModel):
+    """Arguments for MAC address lookup tool."""
+    host: str = Field(description="Target switch IP address or hostname")
+    mac_address: Optional[str] = Field(default=None, description="MAC address to lookup (e.g., 'a4:83:e7:12:34:56')")
+    ip_address: Optional[str] = Field(default=None, description="IP address to lookup via ARP")
+    vlan_id: Optional[int] = Field(default=None, description="Filter by VLAN ID")
+    port: Optional[int] = Field(default=22, description="SSH port")
+
+
+class MacLookupResult(BaseModel):
+    """MAC address lookup result."""
+    host: str
+    entries: List[Dict[str, Any]] = Field(description="Found MAC/ARP entries")
+    total_found: int
+    duration_ms: int
+    commands_executed: List[str]
+
+
+class ArgsLacpInfo(BaseModel):
+    """Arguments for LACP/link aggregation info tool."""
+    host: str = Field(description="Target switch IP address or hostname")
+    agg_id: Optional[str] = Field(default=None, description="Specific aggregate ID to query (optional)")
+    port: Optional[int] = Field(default=22, description="SSH port")
+
+
+class LacpInfoResult(BaseModel):
+    """LACP/Link aggregation information result."""
+    host: str
+    lags: List[Dict[str, Any]] = Field(description="Link aggregation groups")
+    total_lags: int
+    lacp_enabled: bool = Field(description="LACP protocol enabled")
+    issues: List[str] = Field(default_factory=list, description="Detected issues")
+    duration_ms: int
+    commands_executed: List[str]
+
+
+class ArgsNtpStatus(BaseModel):
+    """Arguments for NTP status tool."""
+    host: str = Field(description="Target switch IP address or hostname")
+    include_servers: bool = Field(default=True, description="Include server list details")
+    port: Optional[int] = Field(default=22, description="SSH port")
+
+
+class NtpStatusResult(BaseModel):
+    """NTP status result."""
+    host: str
+    synchronized: bool = Field(description="NTP synchronized status")
+    mode: str = Field(description="NTP mode (client, server, peer)")
+    stratum: Optional[int] = Field(description="NTP stratum level")
+    reference_clock: Optional[str] = Field(description="Reference clock IP")
+    offset_ms: Optional[float] = Field(description="Time offset in milliseconds")
+    servers: List[Dict[str, Any]] = Field(default_factory=list, description="Configured NTP servers")
+    issues: List[str] = Field(default_factory=list, description="Detected issues")
+    duration_ms: int
+    commands_executed: List[str]
+
+
+class ArgsDhcpAudit(BaseModel):
+    """Arguments for DHCP relay audit tool."""
+    host: str = Field(description="Target switch IP address or hostname")
+    include_statistics: bool = Field(default=True, description="Include packet statistics")
+    port: Optional[int] = Field(default=22, description="SSH port")
+
+
+class DhcpAuditResult(BaseModel):
+    """DHCP relay audit result."""
+    host: str
+    relay_enabled: bool = Field(description="DHCP relay administratively enabled")
+    agent_information: bool = Field(description="DHCP Option 82 enabled")
+    max_hops: Optional[int] = Field(description="Maximum hop count")
+    interfaces: List[Dict[str, Any]] = Field(default_factory=list, description="Per-interface relay configuration")
+    global_stats: Optional[Dict[str, Any]] = Field(default=None, description="Global relay statistics")
+    issues: List[str] = Field(default_factory=list, description="Detected issues")
+    duration_ms: int
+    commands_executed: List[str]
+
+
 class SpantreeAuditResult(BaseModel):
     """Spanning tree audit result."""
     host: str
@@ -442,6 +600,7 @@ def call_tool(
     ctx: RequestContext,
     tool: str,
     args: Dict[str, Any],
+    zone_resolver: Optional[Any] = None,  # ZoneAuthResolver
 ) -> Dict[str, Any]:
     # No authorization checks - security handled by MCP platform
     # Context (subject, environment) used only for audit logging
@@ -450,7 +609,36 @@ def call_tool(
 
     # Helper function to create a Device from host/IP
     def create_device_from_host(host: str, port: int = 22, username: Optional[str] = None) -> Any:
-        from .config import Device
+        from .config import Device, AuthPasswordInline
+        from pydantic import SecretStr
+        
+        # If username provided explicitly, use it
+        if username:
+            return Device(
+                id=f"dynamic:{host}",
+                host=host,
+                port=port,
+                name=host,
+                tags=[],
+                username=username,
+            )
+        
+        # Try zone-based authentication
+        if zone_resolver:
+            creds_tuple = zone_resolver.get_primary_credentials(host)
+            if creds_tuple:
+                zone_username, zone_password = creds_tuple
+                return Device(
+                    id=f"dynamic:{host}",
+                    host=host,
+                    port=port,
+                    name=host,
+                    tags=[],
+                    username=zone_username,
+                    auth=AuthPasswordInline(type="password_inline", password=SecretStr(zone_password)),
+                )
+        
+        # Fallback to default credentials from config
         return Device(
             id=f"dynamic:{host}",
             host=host,
@@ -1571,6 +1759,503 @@ def call_tool(
                 }
             ]
         }
+    
+    # ========================================================================
+    # HEALTH MONITORING
+    # ========================================================================
+    if tool == "aos.health.monitor":
+        import time
+        
+        parsed = ArgsHealthMonitor.model_validate(args)
+        device = create_device_from_host(parsed.host, parsed.port or 22)
+        
+        start_time = time.time()
+        commands_executed = []
+        
+        # Execute health check command
+        if parsed.detailed:
+            health_cmd = "show health all"
+        else:
+            health_cmd = "show health"
+        
+        safe_cmd = sanitize_command(health_cmd, compiled_policy)
+        health_result = runner.run(device, safe_cmd, timeout_s=15)
+        commands_executed.append(health_cmd)
+        
+        # Parse health data
+        health_data = parse_show_health(health_result.stdout)
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        # Build result
+        modules = [HealthModuleInfo(**m) for m in health_data["modules"]]
+        
+        result = HealthMonitorResult(
+            host=device.host,
+            overall_status=health_data["overall_status"],
+            modules=modules,
+            issues=health_data["issues"],
+            duration_ms=duration_ms,
+            commands_executed=commands_executed
+        )
+        
+        # Generate content
+        content_parts = []
+        status_emoji = "✅" if result.overall_status == "OK" else "⚠️" if result.overall_status == "WARNING" else "❌"
+        
+        content_parts.append({
+            "type": "text",
+            "text": f"{status_emoji} **Health Monitor: {device.host}**\n\n"
+                   f"Overall Status: {result.overall_status}\n"
+                   f"Modules Monitored: {len(result.modules)}\n"
+        })
+        
+        if result.issues:
+            content_parts.append({
+                "type": "text",
+                "text": f"\n⚠️ Issues Detected ({len(result.issues)}):\n" + 
+                       "\n".join(f"- {issue}" for issue in result.issues[:10])
+            })
+        
+        return {
+            **result.model_dump(),
+            "content": content_parts
+        }
+    
+    # ========================================================================
+    # CHASSIS STATUS
+    # ========================================================================
+    if tool == "aos.chassis.status":
+        import time
+        
+        parsed = ArgsChassisStatus.model_validate(args)
+        device = create_device_from_host(parsed.host, parsed.port or 22)
+        
+        start_time = time.time()
+        commands_executed = []
+        
+        # Execute chassis commands
+        commands = ["show chassis"]
+        
+        if parsed.include_temperature:
+            commands.append("show temperature")
+        if parsed.include_fans:
+            commands.append("show fan")
+        if parsed.include_power:
+            commands.append("show power-supply")
+        
+        # Try to get CMM info
+        commands.append("show cmm")
+        
+        results = {}
+        for cmd in commands:
+            try:
+                safe_cmd = sanitize_command(cmd, compiled_policy)
+                res = runner.run(device, safe_cmd, timeout_s=15)
+                results[cmd] = res.stdout
+                commands_executed.append(cmd)
+            except Exception:
+                # Command may not be available on all models
+                pass
+        
+        # Parse results
+        chassis_data = parse_show_chassis(results.get("show chassis", ""))
+        
+        temp_data = None
+        if "show temperature" in results:
+            temp_data = parse_show_temperature(results["show temperature"])
+        
+        fan_data = []
+        if "show fan" in results:
+            fan_data = parse_show_fan(results["show fan"])
+        
+        psu_data = []
+        if "show power-supply" in results:
+            psu_data = parse_show_power_supply(results["show power-supply"])
+        
+        cmm_data = None
+        if "show cmm" in results:
+            cmm_data = parse_show_cmm(results["show cmm"])
+        
+        # Analyze for issues
+        issues = analyze_chassis_health(chassis_data, temp_data or {}, fan_data, psu_data)
+        if temp_data:
+            issues.extend(temp_data.get("issues", []))
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        result = ChassisStatusResult(
+            host=device.host,
+            chassis_type=chassis_data.get("chassis_type"),
+            serial_number=chassis_data.get("serial_number"),
+            hardware_revision=chassis_data.get("hardware_revision"),
+            mac_address=chassis_data.get("mac_address"),
+            cmm=cmm_data,
+            temperature=temp_data,
+            fans=fan_data,
+            power_supplies=psu_data,
+            issues=issues,
+            duration_ms=duration_ms,
+            commands_executed=commands_executed
+        )
+        
+        # Generate content
+        content_parts = []
+        content_parts.append({
+            "type": "text",
+            "text": f"**Chassis Status: {device.host}**\n\n"
+                   f"Model: {result.chassis_type or 'Unknown'}\n"
+                   f"Serial: {result.serial_number or 'Unknown'}\n"
+                   f"MAC: {result.mac_address or 'Unknown'}\n"
+                   f"Hardware Rev: {result.hardware_revision or 'Unknown'}\n"
+        })
+        
+        if result.cmm:
+            cmm_text = "\n**CMM Status:**\n"
+            if result.cmm.get("primary"):
+                p = result.cmm["primary"]
+                cmm_text += f"- Primary (Slot {p['slot']}): {p['status']}"
+                if p.get("temperature_celsius"):
+                    cmm_text += f" - {p['temperature_celsius']}°C"
+                cmm_text += "\n"
+            if result.cmm.get("secondary"):
+                s = result.cmm["secondary"]
+                cmm_text += f"- Secondary (Slot {s['slot']}): {s['status']}"
+                if s.get("temperature_celsius"):
+                    cmm_text += f" - {s['temperature_celsius']}°C"
+                cmm_text += "\n"
+            content_parts.append({"type": "text", "text": cmm_text})
+        
+        if result.issues:
+            content_parts.append({
+                "type": "text",
+                "text": f"\n⚠️ Hardware Issues ({len(result.issues)}):\n" + 
+                       "\n".join(f"- {issue}" for issue in result.issues[:10])
+            })
+        
+        return {
+            **result.model_dump(),
+            "content": content_parts
+        }
+    
+    # ========================================================================
+    # MAC ADDRESS LOOKUP
+    # ========================================================================
+    if tool == "aos.mac.lookup":
+        import time
+        import re
+        
+        parsed = ArgsMacLookup.model_validate(args)
+        device = create_device_from_host(parsed.host, parsed.port or 22)
+        
+        start_time = time.time()
+        commands_executed = []
+        entries = []
+        
+        # Lookup by MAC address
+        if parsed.mac_address:
+            mac = parsed.mac_address.replace("-", ":").lower()
+            cmd = f"show mac-learning mac {mac}"
+            safe_cmd = sanitize_command(cmd, compiled_policy)
+            res = runner.run(device, safe_cmd, timeout_s=10)
+            commands_executed.append(cmd)
+            
+            # Parse MAC learning output
+            lines = res.stdout.split('\n')
+            for line in lines:
+                # OS6860 format: "VLAN    1098   70:4c:a5:50:45:ce    dynamic     bridging      1/1/24"
+                match = re.search(r'VLAN\s+(\d+)\s+([0-9a-fA-F:]{17})\s+(dynamic|static)\s+\w+\s+(\S+)', line, re.IGNORECASE)
+                if match:
+                    vlan, mac_addr, mac_type, port = match.groups()
+                    entries.append({
+                        "mac_address": mac_addr,
+                        "vlan": int(vlan),
+                        "port": port,
+                        "type": mac_type.lower()
+                    })
+                    continue
+                
+                # Standard format: "MAC Address   VLAN   Port   Type"
+                std_match = re.search(r'([0-9a-fA-F:]{17})\s+(\d+)\s+(\S+)\s+(dynamic|static)', line, re.IGNORECASE)
+                if std_match:
+                    mac_addr, vlan, port, mac_type = std_match.groups()
+                    entries.append({
+                        "mac_address": mac_addr,
+                        "vlan": int(vlan),
+                        "port": port,
+                        "type": mac_type.lower()
+                    })
+        
+        # Lookup by IP address (via ARP)
+        if parsed.ip_address:
+            cmd = f"show arp {parsed.ip_address}"
+            safe_cmd = sanitize_command(cmd, compiled_policy)
+            res = runner.run(device, safe_cmd, timeout_s=10)
+            commands_executed.append(cmd)
+            
+            # Parse ARP output
+            lines = res.stdout.split('\n')
+            for line in lines:
+                # Format: IP Address   MAC Address   VLAN   Port   Type
+                match = re.search(r'(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F:]{17})\s+(\d+)\s+(\S+)', line)
+                if match:
+                    ip_addr, mac_addr, vlan, port = match.groups()
+                    entries.append({
+                        "ip_address": ip_addr,
+                        "mac_address": mac_addr,
+                        "vlan": int(vlan),
+                        "port": port,
+                        "type": "arp"
+                    })
+        
+        # Lookup by VLAN
+        if parsed.vlan_id and not parsed.mac_address and not parsed.ip_address:
+            cmd = f"show mac-learning vlan {parsed.vlan_id}"
+            safe_cmd = sanitize_command(cmd, compiled_policy)
+            res = runner.run(device, safe_cmd, timeout_s=15)
+            commands_executed.append(cmd)
+            
+            # Parse output
+            lines = res.stdout.split('\n')
+            for line in lines:
+                # OS6860 format: "VLAN    1098   70:4c:a5:50:45:ce    dynamic     bridging      1/1/24"
+                match = re.search(r'VLAN\s+(\d+)\s+([0-9a-fA-F:]{17})\s+(dynamic|static)\s+\w+\s+(\S+)', line, re.IGNORECASE)
+                if match:
+                    vlan, mac_addr, mac_type, port = match.groups()
+                    entries.append({
+                        "mac_address": mac_addr,
+                        "vlan": int(vlan),
+                        "port": port,
+                        "type": mac_type.lower()
+                    })
+                    continue
+                
+                # Standard format
+                std_match = re.search(r'([0-9a-fA-F:]{17})\s+(\d+)\s+(\S+)\s+(dynamic|static)', line, re.IGNORECASE)
+                if std_match:
+                    mac_addr, vlan, port, mac_type = std_match.groups()
+                    entries.append({
+                        "mac_address": mac_addr,
+                        "vlan": int(vlan),
+                        "port": port,
+                        "type": mac_type.lower()
+                    })
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        result = MacLookupResult(
+            host=device.host,
+            entries=entries,
+            total_found=len(entries),
+            duration_ms=duration_ms,
+            commands_executed=commands_executed
+        )
+        
+        # Generate content
+        content_parts = []
+        if result.total_found > 0:
+            content_parts.append({
+                "type": "text",
+                "text": f"**MAC Lookup Results: {device.host}**\n\n"
+                       f"Found: {result.total_found} entries\n"
+            })
+            
+            # Show first 10 entries
+            for entry in entries[:10]:
+                entry_text = f"\n- MAC: {entry.get('mac_address', 'N/A')}"
+                if 'ip_address' in entry:
+                    entry_text += f" | IP: {entry['ip_address']}"
+                entry_text += f" | VLAN: {entry.get('vlan', 'N/A')} | Port: {entry.get('port', 'N/A')}"
+                content_parts.append({"type": "text", "text": entry_text})
+        else:
+            content_parts.append({
+                "type": "text",
+                "text": f"**MAC Lookup: {device.host}**\n\nNo entries found."
+            })
+        
+        return {
+            **result.model_dump(),
+            "content": content_parts
+        }
+    # ========================================================================
+    # LACP / LINK AGGREGATION INFO
+    # ========================================================================
+    if tool == "aos.lacp.info":
+        import time
+        
+        parsed = ArgsLacpInfo.model_validate(args)
+        device = create_device_from_host(parsed.host, parsed.port or 22)
+        
+        start_time = time.time()
+        commands_executed = []
+        
+        # Execute link aggregation commands
+        linkagg_cmd = "show linkagg"
+        safe_cmd = sanitize_command(linkagg_cmd, compiled_policy)
+        linkagg_result = runner.run(device, safe_cmd, timeout_s=15)
+        commands_executed.append(linkagg_cmd)
+        
+        # Parse linkagg output
+        linkagg_data = parse_show_linkagg(linkagg_result.stdout)
+        
+        # Try to get LACP protocol info (may not be available)
+        lacp_data = {"lacp_enabled": False, "aggregates": []}
+        try:
+            lacp_cmd = "show lacp"
+            safe_lacp = sanitize_command(lacp_cmd, compiled_policy)
+            lacp_result = runner.run(device, safe_lacp, timeout_s=10)
+            commands_executed.append(lacp_cmd)
+            lacp_data = parse_show_lacp(lacp_result.stdout)
+        except Exception:
+            pass  # LACP command may not be available
+        
+        # Analyze for issues
+        issues = analyze_lacp_issues(lacp_data, linkagg_data)
+        issues.extend(linkagg_data.get("issues", []))
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        result = LacpInfoResult(
+            host=device.host,
+            lags=linkagg_data.get("lags", []),
+            total_lags=linkagg_data.get("total_lags", 0),
+            lacp_enabled=lacp_data.get("lacp_enabled", False),
+            issues=issues,
+            duration_ms=duration_ms,
+            commands_executed=commands_executed
+        )
+        
+        # Generate content
+        content_parts = []
+        status_emoji = "✅" if not result.issues else "⚠️"
+        
+        content_parts.append({
+            "type": "text",
+            "text": f"{status_emoji} **LACP/Link Aggregation: {device.host}**\n\n"
+                   f"Total LAGs: {result.total_lags}\n"
+                   f"LACP Protocol: {'Enabled' if result.lacp_enabled else 'Disabled'}\n"
+        })
+        
+        if result.lags:
+            lags_up = len([lag for lag in result.lags if lag.get("oper_state") == "up"])
+            content_parts.append({
+                "type": "text",
+                "text": f"Operational LAGs: {lags_up}/{result.total_lags}\n"
+            })
+            
+            # Show LAG summary
+            for lag in result.lags[:10]:
+                lag_text = (
+                    f"\n- LAG {lag['agg_id']} ({lag.get('name', 'unnamed')}): "
+                    f"{lag.get('oper_state', 'unknown').upper()} - "
+                    f"{lag.get('size', 0)} members"
+                )
+                content_parts.append({"type": "text", "text": lag_text})
+        
+        if result.issues:
+            content_parts.append({
+                "type": "text",
+                "text": f"\n\n⚠️ Issues ({len(result.issues)}):\n" + 
+                       "\n".join(f"- {issue}" for issue in result.issues[:10])
+            })
+        
+        return {
+            **result.model_dump(),
+            "content": content_parts
+        }
+    
+    # ========================================================================
+    # NTP STATUS
+    # ========================================================================
+    if tool == "aos.ntp.status":
+        import time
+        
+        parsed = ArgsNtpStatus.model_validate(args)
+        device = create_device_from_host(parsed.host, parsed.port or 22)
+        
+        start_time = time.time()
+        commands_executed = []
+        
+        # Execute NTP status command
+        ntp_cmd = "show ntp status"
+        safe_cmd = sanitize_command(ntp_cmd, compiled_policy)
+        ntp_result = runner.run(device, safe_cmd, timeout_s=10)
+        commands_executed.append(ntp_cmd)
+        
+        # Parse NTP status
+        ntp_status = parse_show_ntp_status(ntp_result.stdout)
+        
+        # Get server list if requested
+        servers = []
+        if parsed.include_servers:
+            try:
+                # Try client server list
+                srv_cmd = "show ntp client server-list"
+                safe_srv = sanitize_command(srv_cmd, compiled_policy)
+                srv_result = runner.run(device, safe_srv, timeout_s=10)
+                commands_executed.append(srv_cmd)
+                servers = parse_show_ntp_client_server_list(srv_result.stdout)
+            except Exception:
+                pass  # Command may not be available
+        
+        # Analyze for issues
+        issues = analyze_ntp_status(ntp_status, servers)
+        
+        duration_ms = int((time.time() - start_time) * 1000)
+        
+        result = NtpStatusResult(
+            host=device.host,
+            synchronized=ntp_status.get("synchronized", False),
+            mode=ntp_status.get("mode", "unknown"),
+            stratum=ntp_status.get("stratum"),
+            reference_clock=ntp_status.get("reference_clock"),
+            offset_ms=ntp_status.get("offset_ms"),
+            servers=servers,
+            issues=issues,
+            duration_ms=duration_ms,
+            commands_executed=commands_executed
+        )
+        
+        # Generate content
+        content_parts = []
+        status_emoji = "✅" if result.synchronized else "❌"
+        
+        content_parts.append({
+            "type": "text",
+            "text": f"{status_emoji} **NTP Status: {device.host}**\n\n"
+                   f"Synchronized: {'Yes' if result.synchronized else 'No'}\n"
+                   f"Mode: {result.mode}\n"
+                   f"Stratum: {result.stratum or 'Unknown'}\n"
+                   f"Reference: {result.reference_clock or 'None'}\n"
+        })
+        
+        if result.offset_ms is not None:
+            content_parts.append({
+                "type": "text",
+                "text": f"Offset: {result.offset_ms:.2f}ms\n"
+            })
+        
+        if result.servers:
+            content_parts.append({
+                "type": "text",
+                "text": f"\nConfigured Servers: {len(result.servers)}"
+            })
+        
+        if result.issues:
+            content_parts.append({
+                "type": "text",
+                "text": f"\n\n⚠️ Issues ({len(result.issues)}):\n" + 
+                       "\n".join(f"- {issue}" for issue in result.issues[:10])
+            })
+        
+        return {
+            **result.model_dump(),
+            "content": content_parts
+        }
+    
+    # ========================================================================
+    # DHCP RELAY AUDIT
+    # ========================================================================
 
     raise KeyError(f"Unknown tool: {tool}")
 
@@ -1624,49 +2309,88 @@ def tool_infos(cfg: Optional[AppConfig] = None) -> List[ToolInfo]:
             required_scopes=[]
         ),
         ToolInfo(
-            name="aos.autodiscover",
-            description="Discover Alcatel-Lucent OmniSwitch devices on the network via SNMP. Returns list of discovered switches with basic information.",
+            name="aos.diag.ping",
+            description="Execute ping diagnostic from an OmniSwitch to a destination IP or hostname. Useful for testing network connectivity and latency.",
             input_schema={
                 "type": "object",
                 "properties": {
-                    "network": {
+                    "host": {
                         "type": "string",
-                        "description": "Network range to scan (CIDR notation, e.g., 10.9.0.0/24)"
+                        "description": "Target switch IP address or hostname"
                     },
-                    "community": {
+                    "destination": {
                         "type": "string",
-                        "description": "SNMP community string (uses AOS_SNMP_COMMUNITY env var if not provided)"
+                        "description": "Ping destination IP address or hostname"
                     },
-                    "timeout": {
+                    "count": {
                         "type": "integer",
-                        "description": "SNMP timeout in seconds (default: 2)",
-                        "default": 2
+                        "description": "Number of ping packets to send (default: 5)",
+                        "default": 5
                     },
-                    "retries": {
+                    "port": {
                         "type": "integer",
-                        "description": "Number of SNMP retries (default: 1)",
-                        "default": 1
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    },
+                    "timeout_s": {
+                        "type": "integer",
+                        "description": "Command timeout in seconds"
                     }
                 },
-                "required": ["network"]
+                "required": ["host", "destination"]
             },
             output_schema={
                 "type": "object",
                 "properties": {
-                    "network": {"type": "string"},
-                    "discovered": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "ip": {"type": "string"},
-                                "hostname": {"type": "string"},
-                                "model": {"type": "string"},
-                                "description": {"type": "string"}
-                            }
-                        }
+                    "host": {"type": "string"},
+                    "command": {"type": "string"},
+                    "stdout": {"type": "string"},
+                    "stderr": {"type": "string"},
+                    "exit_status": {"type": ["integer", "null"]},
+                    "duration_ms": {"type": "integer"},
+                    "truncated": {"type": "boolean"},
+                    "redacted": {"type": "boolean"}
+                }
+            },
+            required_scopes=[]
+        ),
+        ToolInfo(
+            name="aos.diag.traceroute",
+            description="Execute traceroute diagnostic from an OmniSwitch to trace network path to a destination. Shows all hops between switch and destination.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Target switch IP address or hostname"
                     },
-                    "scan_duration_ms": {"type": "integer"}
+                    "destination": {
+                        "type": "string",
+                        "description": "Traceroute destination IP address or hostname"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    },
+                    "timeout_s": {
+                        "type": "integer",
+                        "description": "Command timeout in seconds"
+                    }
+                },
+                "required": ["host", "destination"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"},
+                    "command": {"type": "string"},
+                    "stdout": {"type": "string"},
+                    "stderr": {"type": "string"},
+                    "exit_status": {"type": ["integer", "null"]},
+                    "duration_ms": {"type": "integer"},
+                    "truncated": {"type": "boolean"},
+                    "redacted": {"type": "boolean"}
                 }
             },
             required_scopes=[]
@@ -2274,6 +2998,277 @@ def tool_infos(cfg: Optional[AppConfig] = None) -> List[ToolInfo]:
                         "type": "array",
                         "items": {"type": "string"}
                     }
+                }
+            },
+            required_scopes=[]
+        ),
+        ToolInfo(
+            name="aos.health.monitor",
+            description="Monitor switch health including CPU, memory, RX/TX errors, and module status. Returns structured health data with automatic issue detection and threshold violations.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Target switch IP address or hostname"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    },
+                    "detailed": {
+                        "type": "boolean",
+                        "description": "Include detailed per-module information (default: false)",
+                        "default": False
+                    }
+                },
+                "required": ["host"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"},
+                    "overall_status": {
+                        "type": "string",
+                        "enum": ["OK", "WARNING", "CRITICAL", "DOWN"],
+                        "description": "Overall health status"
+                    },
+                    "modules": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "module_name": {"type": "string"},
+                                "slot": {"type": "string"},
+                                "status": {"type": "string"},
+                                "cpu_usage_percent": {"type": "integer"},
+                                "memory_usage_percent": {"type": "integer"},
+                                "rx_errors": {"type": "integer"},
+                                "tx_errors": {"type": "integer"}
+                            }
+                        }
+                    },
+                    "issues": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Detected health issues"
+                    },
+                    "duration_ms": {"type": "integer"},
+                    "commands_executed": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                }
+            },
+            required_scopes=[]
+        ),
+        ToolInfo(
+            name="aos.chassis.status",
+            description="Get comprehensive chassis hardware status including model, serial number, CMM status, temperature sensors, fan status, and power supply information. Perfect for hardware monitoring and preventive maintenance.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Target switch IP address or hostname"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    },
+                    "include_temperature": {
+                        "type": "boolean",
+                        "description": "Include temperature sensor readings (default: true)",
+                        "default": True
+                    },
+                    "include_fans": {
+                        "type": "boolean",
+                        "description": "Include fan status (default: true)",
+                        "default": True
+                    },
+                    "include_power": {
+                        "type": "boolean",
+                        "description": "Include power supply status (default: true)",
+                        "default": True
+                    }
+                },
+                "required": ["host"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"},
+                    "chassis_type": {"type": ["string", "null"]},
+                    "serial_number": {"type": ["string", "null"]},
+                    "hardware_revision": {"type": ["string", "null"]},
+                    "mac_address": {"type": ["string", "null"]},
+                    "cmm": {"type": ["object", "null"], "description": "CMM status"},
+                    "temperature": {"type": ["object", "null"], "description": "Temperature sensors"},
+                    "fans": {"type": "array", "items": {"type": "object"}},
+                    "power_supplies": {"type": "array", "items": {"type": "object"}},
+                    "issues": {"type": "array", "items": {"type": "string"}},
+                    "duration_ms": {"type": "integer"},
+                    "commands_executed": {"type": "array", "items": {"type": "string"}}
+                }
+            },
+            required_scopes=[]
+        ),
+        ToolInfo(
+            name="aos.mac.lookup",
+            description="Lookup devices by MAC address, IP address, or VLAN. Returns location (port, VLAN) and type (dynamic/static/ARP) of learned addresses. Essential for device troubleshooting and network inventory.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Target switch IP address or hostname"
+                    },
+                    "mac_address": {
+                        "type": "string",
+                        "description": "MAC address to lookup (e.g., 'a4:83:e7:12:34:56' or 'a4-83-e7-12-34-56')"
+                    },
+                    "ip_address": {
+                        "type": "string",
+                        "description": "IP address to lookup via ARP table"
+                    },
+                    "vlan_id": {
+                        "type": "integer",
+                        "description": "List all MACs in specific VLAN"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    }
+                },
+                "required": ["host"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"},
+                    "entries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "mac_address": {"type": "string"},
+                                "ip_address": {"type": ["string", "null"]},
+                                "vlan": {"type": "integer"},
+                                "port": {"type": "string"},
+                                "type": {"type": "string", "enum": ["dynamic", "static", "arp"]}
+                            }
+                        }
+                    },
+                    "total_found": {"type": "integer"},
+                    "duration_ms": {"type": "integer"},
+                    "commands_executed": {"type": "array", "items": {"type": "string"}}
+                }
+            },
+            required_scopes=[]
+        ),
+        ToolInfo(
+            name="aos.lacp.info",
+            description="Get Link Aggregation (LAG) and LACP protocol status. Returns information about all link aggregation groups including operational state, member ports, LACP mode, and detects issues like ports in standby or LAGs operationally down.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Target switch IP address or hostname"
+                    },
+                    "agg_id": {
+                        "type": "string",
+                        "description": "Specific aggregate ID to query (optional)"
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    }
+                },
+                "required": ["host"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"},
+                    "lags": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "agg_id": {"type": "string"},
+                                "name": {"type": "string"},
+                                "size": {"type": "integer"},
+                                "admin_state": {"type": "string"},
+                                "oper_state": {"type": "string"},
+                                "type": {"type": "string", "enum": ["lacp", "static"]},
+                                "hash_algorithm": {"type": "string"},
+                                "members": {"type": "array"}
+                            }
+                        }
+                    },
+                    "total_lags": {"type": "integer"},
+                    "lacp_enabled": {"type": "boolean"},
+                    "issues": {"type": "array", "items": {"type": "string"}},
+                    "duration_ms": {"type": "integer"},
+                    "commands_executed": {"type": "array", "items": {"type": "string"}}
+                }
+            },
+            required_scopes=[]
+        ),
+        ToolInfo(
+            name="aos.ntp.status",
+            description="Get NTP (Network Time Protocol) synchronization status. Returns sync state, stratum, reference clock, time offset, and configured NTP servers. Essential for ensuring accurate time synchronization across network infrastructure.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "Target switch IP address or hostname"
+                    },
+                    "include_servers": {
+                        "type": "boolean",
+                        "description": "Include detailed server list (default: true)",
+                        "default": True
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "SSH port (default: 22)",
+                        "default": 22
+                    }
+                },
+                "required": ["host"]
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "host": {"type": "string"},
+                    "synchronized": {"type": "boolean"},
+                    "mode": {"type": "string"},
+                    "stratum": {"type": ["integer", "null"]},
+                    "reference_clock": {"type": ["string", "null"]},
+                    "offset_ms": {"type": ["number", "null"]},
+                    "servers": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "ip": {"type": "string"},
+                                "status": {"type": "string"},
+                                "stratum": {"type": "integer"},
+                                "delay_ms": {"type": "number"},
+                                "reachability": {"type": "integer"},
+                                "preferred": {"type": "boolean"}
+                            }
+                        }
+                    },
+                    "issues": {"type": "array", "items": {"type": "string"}},
+                    "duration_ms": {"type": "integer"},
+                    "commands_executed": {"type": "array", "items": {"type": "string"}}
                 }
             },
             required_scopes=[]

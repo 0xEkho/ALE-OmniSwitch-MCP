@@ -46,6 +46,7 @@ class AppState:
     cfg: AppConfig
     inv: InventoryStore
     runner: SSHRunner
+    zone_resolver: Optional[Any] = None  # ZoneAuthResolver
 
 
 def create_app() -> FastAPI:
@@ -65,7 +66,22 @@ def create_app() -> FastAPI:
         default_device_auth=_resolve_default_auth(defaults),
     )
 
-    state = AppState(env=env, cfg=cfg, inv=inv, runner=runner)
+    # Initialize zone auth resolver if configured
+    zone_resolver = None
+    if cfg.zone_auth:
+        from .zone_auth import ZoneAuthResolver
+        zone_config = {}
+        if cfg.zone_auth.global_:
+            zone_config['global'] = cfg.zone_auth.global_.model_dump(exclude_none=True)
+        if cfg.zone_auth.zones:
+            zone_config['zones'] = {
+                zone_id: zone_cfg.model_dump(exclude_none=True)
+                for zone_id, zone_cfg in cfg.zone_auth.zones.items()
+            }
+        zone_resolver = ZoneAuthResolver(zone_config)
+        logger.info("Zone-based authentication enabled")
+
+    state = AppState(env=env, cfg=cfg, inv=inv, runner=runner, zone_resolver=zone_resolver)
 
     app = FastAPI(title="AOS Server (for MCP Platform)", version="0.1.2.1")
 
@@ -122,6 +138,7 @@ def create_app() -> FastAPI:
                 ctx=req.context,
                 tool=req.tool,
                 args=req.args,
+                zone_resolver=st.zone_resolver,
             )
             
             # Build MCP content blocks for rich rendering

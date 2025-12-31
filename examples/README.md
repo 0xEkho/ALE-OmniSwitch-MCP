@@ -17,6 +17,9 @@ This directory contains practical examples for all available MCP tools.
 | `aos.routing.audit` | Routing configuration audit | [09_routing_audit.md](09_routing_audit.md) |
 | `aos.spantree.audit` | Spanning tree audit | [10_spantree_audit.md](10_spantree_audit.md) |
 | `aos.config.backup` | Configuration backup | [11_config_backup.md](11_config_backup.md) |
+| `aos.health.monitor` | Health monitoring | [12_health_monitor.md](12_health_monitor.md) ⭐ **NEW** |
+| `aos.chassis.status` | Chassis hardware status | [13_chassis_status.md](13_chassis_status.md) ⭐ **NEW** |
+| `aos.mac.lookup` | MAC/IP address lookup | [14_mac_lookup.md](14_mac_lookup.md) ⭐ **NEW** |
 
 ## 🚀 Quick Start
 

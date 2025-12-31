@@ -2,7 +2,7 @@
 
 **How AI assistants interact with your ALE OmniSwitch network infrastructure**
 
-This document outlines the architectural vision and operational model for the ALE-OmniSwitch-MCP server, explaining how it bridges AI assistants with enterprise network devices through a secure, structured, and standardized interface.
+This document outlines the architectural vision and operational model for the ALE-OmniSwitch-MCP server, explaining how it bridges AI assistants (Claude, ChatGPT, etc.) with enterprise ALE OmniSwitch devices through a secure, structured, and standardized MCP (Model Context Protocol) interface.
 
 ## 📐 Architectural Vision
 
@@ -36,19 +36,44 @@ ALE-OmniSwitch-MCP is designed as a **secure gateway layer** between AI assistan
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ALE-OmniSwitch-MCP Server                     │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Tool Registry (10 production tools)                     │   │
-│  │  • aos.cli.readonly    • aos.device.facts               │   │
-│  │  • aos.port.info       • aos.diag.poe                   │   │
-│  │  • aos.poe.restart     • aos.interfaces.discover        │   │
-│  │  • aos.port.discover   • aos.vlan.audit                 │   │
-│  │  • aos.routing.audit   • aos.spantree.audit             │   │
-│  │  • aos.config.backup                                    │   │
+│  │  Tool Registry (18 production tools - v1.1.0)            │   │
+│  │  ─────────────────────────────────────────────────────   │   │
+│  │  Core Operations:                                        │   │
+│  │  • aos.cli.readonly    - Execute read-only CLI commands  │   │
+│  │  • aos.device.facts    - Gather device information       │   │
+│  │  • aos.config.backup   - Backup running configuration    │   │
+│  │                                                           │   │
+│  │  Port & Interface Management:                            │   │
+│  │  • aos.port.info       - Port status & statistics        │   │
+│  │  • aos.port.discover   - Discover all switch ports       │   │
+│  │  • aos.interfaces.discover - Interface details & LLDP    │   │
+│  │  • aos.mac.lookup      - MAC/IP address lookup           │   │
+│  │                                                           │   │
+│  │  Power over Ethernet (PoE):                              │   │
+│  │  • aos.diag.poe        - PoE power diagnostics           │   │
+│  │  • aos.poe.restart     - Restart PoE on ports            │   │
+│  │                                                           │   │
+│  │  Network Auditing:                                       │   │
+│  │  • aos.vlan.audit      - VLAN configuration audit        │   │
+│  │  • aos.routing.audit   - Routing & OSPF audit            │   │
+│  │  • aos.spantree.audit  - Spanning Tree audit             │   │
+│  │                                                           │   │
+│  │  Health & Monitoring:                                    │   │
+│  │  • aos.health.monitor  - Complete health check           │   │
+│  │  • aos.chassis.status  - Chassis hardware status         │   │
+│  │  • aos.ntp.status      - NTP synchronization status      │   │
+│  │  • aos.lacp.info       - Link Aggregation status         │   │
+│  │                                                           │   │
+│  │  Diagnostics:                                            │   │
+│  │  • aos.diag.ping       - Network connectivity test       │   │
+│  │  • aos.diag.traceroute - Network path tracing            │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  Security & Policy Engine                                │   │
 │  │  • Command validation (allowlist/denylist)              │   │
+│  │  • Zone-based authentication (global + zone fallback)   │   │
 │  │  • Authorization checks                                  │   │
-│  │  • Output redaction (passwords, SNMP)                   │   │
+│  │  • Output redaction (passwords, SNMP communities)       │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │  SSH Transport Layer                                     │   │
@@ -86,13 +111,13 @@ ALE-OmniSwitch-MCP is designed as a **secure gateway layer** between AI assistan
 
 ### 1. Conversational Network Operations
 
-**User**: "Check why port 1/1/5 is down on switch 192.168.1.100"
+**User**: "Check why port 1/1/5 is down on switch 192.168.10.50"
 
 **Flow**:
 ```
 AI Assistant
-  → Calls: aos.port.info(host="192.168.1.100", port="1/1/5")
-  → MCP validates request
+  → Calls: aos.port.info(host="192.168.10.50", port="1/1/5")
+  → MCP validates request & authenticates (global or zone credentials)
   → SSH executes: "show interfaces 1/1/5"
   → Parser extracts status, speed, errors
   → AI receives structured data
@@ -106,11 +131,11 @@ AI Assistant
 **Flow**:
 ```
 AI Assistant
-  → Calls: aos.diag.poe(host="192.168.1.100")
+  → Calls: aos.diag.poe(host="192.168.10.50")
   → MCP executes: "show lanpower"
   → Parser extracts all port power data
   → AI filters results > 20W
-  → AI presents formatted table with ports
+  → AI presents formatted table with high-power ports
 ```
 
 ### 3. Configuration Audits
@@ -121,7 +146,7 @@ AI Assistant
 ```
 AI Assistant
   → Iterates through switch inventory
-  → Calls: aos.vlan.audit(host=switch) for each
+  → Calls: aos.vlan.audit(host=switch) for each device
   → MCP parses VLAN + STP configurations
   → AI correlates data across devices
   → AI reports VLANs with STP disabled
@@ -129,16 +154,16 @@ AI Assistant
 
 ### 4. Troubleshooting Workflows
 
-**User**: "Trace network path from 10.1.1.100 to 8.8.8.8"
+**User**: "Trace network path from 192.168.10.100 to 8.8.8.8"
 
 **Flow**:
 ```
 AI Assistant
-  → Calls: aos.cli.readonly(host="...", command="ping 10.1.1.100")
+  → Calls: aos.cli.readonly(host="...", command="ping 192.168.10.100")
   → Verifies connectivity
   → Calls: aos.routing.audit(host="...")
   → Analyzes routing table
-  → Calls: aos.cli.readonly(host="...", command="traceroute 8.8.8.8")
+  → Calls: aos.diag.traceroute(host="...", destination="8.8.8.8")
   → AI interprets hop-by-hop results
 ```
 
@@ -207,10 +232,12 @@ Layer 1: Network Isolation
   ├─ Firewall rules to switch management IPs
   └─ Optional: Jump host requirement
 
-Layer 2: Authentication
-  ├─ SSH key-based authentication
-  ├─ Known_hosts verification
-  └─ Credential management (env vars, secrets)
+Layer 2: Authentication (Zone-Based System - v1.1.0)
+  ├─ Primary: Global credentials (all switches)
+  ├─ Fallback: Zone-specific credentials (per subnet)
+  ├─ Zone detection: IP-based (e.g., 192.168.10.0/16 → Zone 10)
+  ├─ SSH key-based authentication support
+  └─ Known_hosts verification
 
 Layer 3: Authorization
   ├─ Command policy (allowlist regex)
@@ -227,6 +254,38 @@ Layer 5: Auditing
   ├─ Structured logging
   └─ Output redaction (passwords/SNMP)
 ```
+
+### Zone-Based Authentication
+
+The v1.1.0 release introduces **zone-based authentication** for large-scale deployments with multiple network segments:
+
+**How it works:**
+1. **Global credentials** are tried first (defined in `AOS_GLOBAL_USERNAME` / `AOS_GLOBAL_PASSWORD`)
+2. If global auth fails, **zone-specific credentials** are used based on target IP
+3. Zones are identified by the **second octet** of the IP address:
+   - `192.168.10.50` → Zone 10 → Uses `AOS_ZONE10_USERNAME` / `AOS_ZONE10_PASSWORD`
+   - `192.168.25.100` → Zone 25 → Uses `AOS_ZONE25_USERNAME` / `AOS_ZONE25_PASSWORD`
+
+**Configuration example:**
+```bash
+# Global credentials (priority 1)
+AOS_GLOBAL_USERNAME="network_automation"
+AOS_GLOBAL_PASSWORD="secure_global_password"
+
+# Zone 10 credentials (192.168.10.0/16) - fallback
+AOS_ZONE10_USERNAME="admin"
+AOS_ZONE10_PASSWORD="zone10_password"
+
+# Zone 25 credentials (192.168.25.0/16) - fallback  
+AOS_ZONE25_USERNAME="admin"
+AOS_ZONE25_PASSWORD="zone25_password"
+```
+
+**Use cases:**
+- **Large enterprises** with 500+ switches across multiple sites
+- **Credential rotation** per zone without affecting global access
+- **Migration scenarios** where some zones use legacy credentials
+- **Security isolation** between network segments
 
 ### Command Policy Example
 
@@ -299,20 +358,21 @@ command_policy:
 # User request
 {
   "tool": "aos.port.info",
-  "args": {"host": "192.168.1.100", "port": "1/1/5"},
+  "args": {"host": "192.168.10.50", "port": "1/1/5"},
   "context": {"subject": "operator@company.com"}
 }
 
 # Internal processing
 1. Validate: aos.port.info exists and subject authorized
-2. Generate SSH command: "show interfaces 1/1/5 port"
-3. Validate command against policy
-4. Execute SSH → switch
-5. Parse output:
+2. Authenticate: Try global creds, fallback to Zone 10 creds (192.168.10.x)
+3. Generate SSH command: "show interfaces 1/1/5 port"
+4. Validate command against policy
+5. Execute SSH → switch
+6. Parse output:
    - Extract: admin_status, oper_status, speed, duplex
    - Extract: input_errors, output_errors, CRC
    - Extract: VLAN membership
-6. Return structured JSON:
+7. Return structured JSON:
 {
   "port": "1/1/5",
   "admin_status": "up",
@@ -354,12 +414,12 @@ IPAM System → REST API → ALE-OmniSwitch-MCP → Switches
 - LLDP neighbor population
 - VLAN assignment validation
 
-**Example**: NetBox integration
+### Example: NetBox integration
 ```python
-# NetBox webhook triggers
+# NetBox webhook triggers on new switch discovery
 switch_discovered = aos.device.facts(host=new_switch_ip)
 interfaces = aos.interfaces.discover(host=new_switch_ip)
-# Update NetBox device + interfaces
+# Update NetBox device + interfaces automatically
 ```
 
 ### 3. Monitoring & Observability
@@ -385,17 +445,17 @@ Prometheus/Grafana → Metrics Endpoint → ALE-OmniSwitch-MCP
 GitLab Pipeline → API Call → ALE-OmniSwitch-MCP → Config Validation
 ```
 
-**Use cases**:
+**Use cases:**
 - Pre-deployment VLAN validation
 - Configuration drift detection
 - Automated compliance checks
 
-**Example**: Pipeline stage
+**Example**: Pipeline stage for production validation
 ```yaml
-validate_vlans:
+validate_network:
   script:
     - curl -X POST $MCP_URL/v1/tools/call \
-        -d '{"tool":"aos.vlan.audit","args":{"host":"prod-core-01"}}'
+        -d '{"tool":"aos.vlan.audit","args":{"host":"192.168.10.1"}}'
     - jq '.result.issues | length == 0' response.json
 ```
 
@@ -435,35 +495,40 @@ validate_vlans:
 
 1. **Prepare infrastructure**:
    - Management network access
-   - SSH credentials
-   - known_hosts file
+   - Global SSH credentials (mandatory)
+   - Zone-specific credentials (optional, for fallback)
+   - known_hosts file with switch fingerprints
 
 2. **Deploy MCP server**:
    - Docker compose up or native Python
-   - Configure config.yaml
-   - Set environment variables
+   - Configure config.yaml with policies
+   - Set environment variables (global + zone credentials)
 
 3. **Test connectivity**:
-   - Health check endpoint
-   - Single tool test (aos.device.facts)
+   - Health check endpoint: `curl http://localhost:8000/health`
+   - Test tool: `aos.device.facts` on a known switch
+   - Verify zone fallback authentication
 
 ### Day 2: Operations
 
 **Routine tasks**:
-- Monitor health endpoint
-- Review audit logs
-- Update known_hosts (new switches)
-- Rotate credentials (if needed)
+- Monitor health endpoint (`/health`)
+- Review audit logs for unauthorized attempts
+- Update known_hosts for new switches
+- Monitor zone authentication failures
+- Rotate credentials per zone if needed
 
 **Maintenance**:
-- Update Docker images
-- Adjust command policies
+- Update Docker images (new tool releases)
+- Adjust command policies (add/remove patterns)
 - Add new tools (as needed)
+- Configure new zones (when network expands)
 
 **Troubleshooting**:
-- Check SSH connectivity
-- Review policy rejections
-- Analyze slow queries
+- Check SSH connectivity per zone
+- Review policy rejections in logs
+- Analyze slow queries (SSH timeout issues)
+- Verify zone credential configuration
 
 ### Day N: Evolution
 
@@ -475,26 +540,28 @@ validate_vlans:
 
 ## 📈 Future Capabilities
 
-### Near-Term
+### Near-Term (v1.2+)
 
 - **Bulk operations**: Execute tools across multiple switches concurrently
-- **Streaming**: WebSocket support for real-time output
+- **Streaming output**: WebSocket support for real-time command output
 - **Advanced parsing**: AOS8 SPB-M topology discovery
+- **DHCP relay monitoring**: Zone-wide DHCP relay health checks
 
-### Long-Term
+### Long-Term (v2.0+)
 
 - **Change tracking**: Configuration diff and version control
-- **Predictive analytics**: ML-based anomaly detection
-- **Self-service**: User-definable custom tools
-- **Multi-vendor**: Support for other switch vendors
+- **Predictive analytics**: ML-based anomaly detection on port statistics
+- **Self-service**: User-definable custom tools via YAML
+- **Multi-vendor**: Support for Cisco, Aruba, Juniper switches
 
 ## 📚 Additional Resources
 
-- **[README.md](README.md)**: Quick start and feature overview
-- **[CHANGELOG.md](CHANGELOG.md)**: Version history
-- **[examples/](examples/)**: 12 detailed usage examples
+- **[README.md](README.md)**: Quick start guide and feature overview
+- **[CHANGELOG.md](CHANGELOG.md)**: Version history and release notes
+- **[examples/](examples/)**: Detailed usage examples for all 18 tools
 - **[deploy/README.md](deploy/README.md)**: Docker deployment guide
+- **[RELEASE_v1.1.0.md](RELEASE_v1.1.0.md)**: Complete v1.1.0 release notes
 
 ---
 
-**ALE-OmniSwitch-MCP** is designed to be the foundational layer for AI-driven network operations, providing a secure, scalable, and maintainable interface to your ALE OmniSwitch infrastructure.
+**ALE-OmniSwitch-MCP v1.1.0** provides a production-ready, secure, and scalable foundation for AI-driven network operations on ALE OmniSwitch infrastructure, with zone-based authentication for enterprise-scale deployments.

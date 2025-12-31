@@ -37,3 +37,19 @@ templates:
 
 # No authz enforcement - security handled by MCP platform
 authz: {}
+
+# Zone-based authentication configuration
+# Zones are identified by the second octet of the IP address (e.g., 10.X.0.0/16)
+zone_auth:
+  global:
+    username_env: AOS_GLOBAL_USERNAME
+    password_env: AOS_GLOBAL_PASSWORD
+  zones:
+    # Example: Zone 1 (10.1.0.0/16) - fallback credentials
+    1:
+      username_env: AOS_ZONE1_USERNAME
+      password_env: AOS_ZONE1_PASSWORD
+    # Example: Zone 2 (10.2.0.0/16) - fallback credentials
+    2:
+      username_env: AOS_ZONE2_USERNAME
+      password_env: AOS_ZONE2_PASSWORD

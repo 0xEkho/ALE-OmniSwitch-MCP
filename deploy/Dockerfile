@@ -3,7 +3,7 @@ FROM python:3.11-slim
 # Metadata
 LABEL maintainer="0xEkho"
 LABEL description="ALE OmniSwitch MCP Server - Network automation via Model Context Protocol"
-LABEL version="1.0.0"
+LABEL version="1.1.0"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

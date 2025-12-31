@@ -2,6 +2,55 @@
 
 All notable changes to ALE OmniSwitch MCP Server will be documented in this file.
 
+## [1.1.0] - 2025-12-31
+
+### Added
+
+**New Network Management Tools** (8 additional tools)
+- `aos.diag.ping` - Ping diagnostics from switch to any destination
+- `aos.diag.traceroute` - Traceroute diagnostics with hop-by-hop analysis
+- `aos.mac.lookup` - MAC address table lookup with port/VLAN resolution
+- `aos.health.monitor` - Comprehensive health monitoring (CPU, memory, temperature, fans, PSU)
+- `aos.chassis.status` - Detailed chassis hardware status
+- `aos.lacp.info` - LACP/Link aggregation information and health analysis
+- `aos.ntp.status` - NTP synchronization status and server health
+- `aos.dhcp.relay.info` - DHCP relay configuration audit (per VRF)
+
+**Zone-Based Authentication**
+- Multi-zone credential management (global + per-zone fallback)
+- Zone identification based on IP subnet (e.g., 10.9.0.0/16 = zone 9)
+- Automatic fallback from global to zone-specific credentials
+- Support for 500+ switches with centralized and local authentication
+
+**Enhanced Parsers**
+- Health monitoring parser for hardware status
+- LACP parser with aggregation analysis
+- NTP parser with synchronization status
+- DHCP relay parser for relay configuration
+- Routing parser improvements (VRF-aware, OSPF areas)
+- STP parser enhancements
+
+**Configuration & Deployment**
+- Zone-based credentials in config.yaml
+- Enhanced Docker support with zone authentication
+- Improved error handling and logging
+
+### Changed
+- Upgraded from 10 to 18 production tools
+- Enhanced authentication system with zone support
+- Improved command output parsing accuracy
+- Better error messages and diagnostics
+
+### Fixed
+- VRF-aware routing audit reliability
+- OSPF interface parsing edge cases
+- Output sanitization for various AOS versions
+
+### Security
+- Zone-based credential isolation
+- Enhanced SSH connection management
+- Improved credential fallback mechanism
+
 ## [1.0.0] - 2025-12-27
 
 ### Initial Release

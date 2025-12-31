@@ -91,6 +91,34 @@ class DeviceDefaults(BaseModel):
     jump: Optional[str] = None
 
 
+class ZoneCredentialsConfig(BaseModel):
+    """Credentials configuration for a zone or global."""
+    username_env: Optional[str] = None
+    username: Optional[str] = None
+    password_env: Optional[str] = None
+    password: Optional[str] = None
+
+
+class ZoneAuthConfig(BaseModel):
+    """Zone-based authentication configuration.
+    
+    Supports global credentials with per-zone fallback.
+    Zone ID is extracted from the second octet of the IP address.
+    
+    Example:
+        zone_auth:
+          global:
+            username_env: AOS_GLOBAL_USERNAME
+            password_env: AOS_GLOBAL_PASSWORD
+          zones:
+            9:  # Zone ID for 10.9.0.0/16
+              username_env: AOS_ZONE9_USERNAME
+              password_env: AOS_ZONE9_PASSWORD
+    """
+    global_: Optional[ZoneCredentialsConfig] = Field(default=None, alias='global')
+    zones: Dict[int, ZoneCredentialsConfig] = Field(default_factory=dict)
+
+
 class InventoryConfig(BaseModel):
     device_defaults: Optional[DeviceDefaults] = None
 
@@ -181,6 +209,7 @@ class AppConfig(BaseModel):
     templates: TemplatesConfig = Field(default_factory=TemplatesConfig)
     facts: FactsConfig = Field(default_factory=FactsConfig)
     authz: AuthzConfig = Field(default_factory=AuthzConfig)
+    zone_auth: Optional[ZoneAuthConfig] = None
 
 
 def load_config(path: str) -> AppConfig:
