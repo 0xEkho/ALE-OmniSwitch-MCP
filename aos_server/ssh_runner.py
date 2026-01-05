@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import socket
 import time
+import threading
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -18,9 +19,90 @@ from .config import (
     SSHConfig,
 )
 
+# Lock for thread-safe known_hosts file operations
+_known_hosts_lock = threading.Lock()
+
 
 class SSHExecutionError(RuntimeError):
     pass
+
+
+def _update_known_hosts_file(filepath: str, hostname: str, key: paramiko.PKey) -> None:
+    """Thread-safe update of known_hosts file - adds or replaces a single host key.
+    
+    Args:
+        filepath: Path to known_hosts file
+        hostname: Hostname or IP address
+        key: SSH host key to save
+    """
+    key_type = key.get_name()
+    key_base64 = key.get_base64()
+    new_line = f"{hostname} {key_type} {key_base64}\n"
+    
+    with _known_hosts_lock:
+        lines = []
+        
+        # Read existing file if it exists
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    lines = f.readlines()
+            except Exception:
+                lines = []
+        
+        # Find and replace existing entry for this hostname, or append
+        found = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                new_lines.append(line)
+                continue
+            
+            parts = stripped.split()
+            if len(parts) >= 2:
+                existing_host = parts[0]
+                # Handle hashed hostnames and comma-separated hostnames
+                hostnames = existing_host.split(',')
+                if hostname in hostnames or existing_host == hostname:
+                    # Replace this line with new key
+                    new_lines.append(new_line)
+                    found = True
+                    continue
+            
+            new_lines.append(line)
+        
+        # If not found, append the new key
+        if not found:
+            new_lines.append(new_line)
+        
+        # Write back atomically
+        try:
+            with open(filepath, 'w') as f:
+                f.writelines(new_lines)
+        except Exception as e:
+            print(f"Warning: Could not save host key to {filepath}: {e}")
+
+
+class AutoAddAndSavePolicy(paramiko.MissingHostKeyPolicy):
+    """Policy that auto-adds missing host keys and saves them to known_hosts file.
+    
+    Unlike paramiko's default save_host_keys(), this implementation:
+    - Only updates the specific host entry (doesn't overwrite the entire file)
+    - Is thread-safe for concurrent connections
+    - Preserves comments and other entries in the file
+    """
+    
+    def __init__(self, known_hosts_file: Optional[str] = None):
+        self.known_hosts_file = known_hosts_file
+    
+    def missing_host_key(self, client, hostname, key):
+        # Add the key to the client's in-memory known_hosts
+        client._host_keys.add(hostname, key.get_name(), key)
+        
+        # Save to file if path is provided
+        if self.known_hosts_file:
+            _update_known_hosts_file(self.known_hosts_file, hostname, key)
 
 
 @dataclass(frozen=True)
@@ -43,7 +125,8 @@ def _build_client(cfg: SSHConfig) -> paramiko.SSHClient:
                 raise RuntimeError(f"known_hosts_file not found: {cfg.known_hosts_file}") from e
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
     else:
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # Use custom policy that saves keys to known_hosts file
+        client.set_missing_host_key_policy(AutoAddAndSavePolicy(cfg.known_hosts_file))
     return client
 
 
@@ -146,15 +229,28 @@ class SSHRunner:
         self._default_device_username = default_device_username
         self._default_device_auth = default_device_auth
 
-    def _resolve_username(self, device: Device) -> str:
+    def _resolve_username(self, device: Device, zone_resolver: Optional[object] = None) -> str:
         """Resolve SSH username for a device.
 
         Order of precedence:
         1) device.username
-        2) default_device_username passed to SSHRunner
-        3) environment variable AOS_DEVICE_USERNAME
+        2) zone_resolver global/zone credentials (if available)
+        3) default_device_username passed to SSHRunner
+        4) environment variable AOS_DEVICE_USERNAME
         """
-        username = device.username or self._default_device_username or os.environ.get("AOS_DEVICE_USERNAME")
+        if device.username:
+            return device.username
+        
+        # Try zone resolver if available (uses global first, then zone)
+        if zone_resolver is not None:
+            try:
+                creds = zone_resolver.get_primary_credentials(device.host)
+                if creds and creds[0]:  # creds is (username, password) tuple
+                    return creds[0]
+            except Exception:
+                pass
+        
+        username = self._default_device_username or os.environ.get("AOS_DEVICE_USERNAME")
         if not username:
             raise SSHExecutionError(
                 f"Missing SSH username for device '{device.id}'. "
@@ -162,16 +258,26 @@ class SSHRunner:
             )
         return username
 
-    def _resolve_auth(self, device: Device) -> DeviceAuth:
+    def _resolve_auth(self, device: Device, zone_resolver: Optional[object] = None) -> DeviceAuth:
         """Resolve SSH auth method for a device.
 
         Order of precedence:
         1) device.auth
-        2) default_device_auth passed to SSHRunner
-        3) password from env var AOS_DEVICE_PASSWORD (AuthPasswordEnv)
+        2) zone_resolver global/zone credentials (if available)
+        3) default_device_auth passed to SSHRunner
+        4) password from env var AOS_DEVICE_PASSWORD (AuthPasswordEnv)
         """
         if device.auth is not None:
             return device.auth
+
+        # Try zone resolver if available (uses global first, then zone)
+        if zone_resolver is not None:
+            try:
+                creds = zone_resolver.get_primary_credentials(device.host)
+                if creds and creds[1]:  # creds is (username, password) tuple
+                    return AuthPasswordInline(type="password_inline", password=creds[1])
+            except Exception:
+                pass
 
         if self._default_device_auth is not None:
             return self._default_device_auth
@@ -184,10 +290,14 @@ class SSHRunner:
             )
         return AuthPasswordEnv(type="password_env", env="AOS_DEVICE_PASSWORD")
 
-    def run(self, device: Device, command: str, timeout_s: Optional[int] = None) -> SSHResult:
+    def run(self, device: Device, command: str, timeout_s: Optional[int] = None, zone_resolver: Optional[object] = None) -> SSHResult:
         start = time.time()
         truncated_any = False
         timeout = timeout_s if timeout_s is not None else self._cfg.default_command_timeout_s
+        
+        # Resolve username and password using zone_resolver if available
+        username = self._resolve_username(device, zone_resolver)
+        auth = self._resolve_auth(device, zone_resolver)
 
         jump_client: Optional[paramiko.SSHClient] = None
         client: Optional[paramiko.SSHClient] = None
@@ -212,8 +322,8 @@ class SSHRunner:
                 self._cfg,
                 device.host,
                 device.port,
-                self._resolve_username(device),
-                self._resolve_auth(device),
+                username,
+                auth,
                 sock_obj=sock_obj,
             )
 

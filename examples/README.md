@@ -17,9 +17,14 @@ This directory contains practical examples for all available MCP tools.
 | `aos.routing.audit` | Routing configuration audit | [09_routing_audit.md](09_routing_audit.md) |
 | `aos.spantree.audit` | Spanning tree audit | [10_spantree_audit.md](10_spantree_audit.md) |
 | `aos.config.backup` | Configuration backup | [11_config_backup.md](11_config_backup.md) |
-| `aos.health.monitor` | Health monitoring | [12_health_monitor.md](12_health_monitor.md) ⭐ **NEW** |
-| `aos.chassis.status` | Chassis hardware status | [13_chassis_status.md](13_chassis_status.md) ⭐ **NEW** |
-| `aos.mac.lookup` | MAC/IP address lookup | [14_mac_lookup.md](14_mac_lookup.md) ⭐ **NEW** |
+| `aos.health.monitor` | Health monitoring | [12_health_monitor.md](12_health_monitor.md) |
+| `aos.chassis.status` | Chassis hardware status | [13_chassis_status.md](13_chassis_status.md) |
+| `aos.mac.lookup` | MAC/IP address lookup | [14_mac_lookup.md](14_mac_lookup.md) |
+| `aos.diag.ping` | Ping from switch | - |
+| `aos.diag.traceroute` | Traceroute from switch | - |
+| `aos.lacp.info` | Link Aggregation status | - |
+| `aos.ntp.status` | NTP synchronization status | - |
+| `aos.dhcp.relay.info` | DHCP Relay configuration | - |
 
 ## 🚀 Quick Start
 
@@ -37,6 +42,7 @@ All tools use this standard format:
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -139,6 +145,7 @@ export OPERATOR="john.doe@company.com"
 
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d "{
     \"context\": {

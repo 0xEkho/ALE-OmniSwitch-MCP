@@ -23,6 +23,7 @@ Monitor switch health including CPU usage, memory consumption, RX/TX errors, and
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -108,6 +109,7 @@ curl -s \
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {

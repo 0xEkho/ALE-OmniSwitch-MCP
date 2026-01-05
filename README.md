@@ -11,13 +11,15 @@ A Model Context Protocol (MCP) server that provides AI assistants with secure, s
 
 ## ✨ Features
 
-- 🔧 **18 Production-Ready Tools** - Complete network management suite with intelligent parsers
+- 🔧 **20 Production-Ready Tools** - Complete network management suite with intelligent parsers
+- 🌐 **Open WebUI Compatible** - Native MCP SSE endpoint for seamless AI assistant integration
 - 🌍 **Zone-Based Authentication** - Multi-site support with global and zone-specific credentials (500+ switches)
 - 🔒 **Enterprise Security** - Command policy enforcement, SSH key verification, credential isolation, output redaction
 - 📊 **Structured Data** - Parsed, typed responses optimized for AI consumption (JSON output)
 - 🐳 **Docker Ready** - Production-grade containerization with health checks and volume mounts
 - 🎯 **Read-Only by Design** - Safe operations with optional write capability (PoE restart only)
 - 🔌 **Full MCP Compliance** - Protocol v1.0 compliant with tool discovery and validation
+- 📦 **Modular Architecture** - Tools organized by category for maintainability and LLM optimization
 
 ## 🎯 Use Cases
 
@@ -36,6 +38,7 @@ A Model Context Protocol (MCP) server that provides AI assistants with secure, s
 - Python 3.11+ (for local execution) or Docker
 - SSH access to Alcatel-Lucent OmniSwitch devices
 - Network credentials (global or per-zone)
+- **Optional**: [Open WebUI](https://openwebui.com) v0.6.31+ for AI assistant integration
 
 ### Local Execution
 
@@ -68,9 +71,16 @@ ssh-keyscan 192.168.1.101 >> known_hosts
 # 6. Start MCP server
 python -m uvicorn aos_server.main:create_app --factory --host 0.0.0.0 --port 8080
 
-# 7. Verify health
+# 7. Verify health (no auth required)
 curl http://localhost:8080/healthz
 # Expected: {"status":"ok"}
+
+# 8. (Optional) Test MCP SSE endpoint for Open WebUI
+curl -X POST http://localhost:8080/mcp/sse \
+  -H "Authorization: Bearer $AOS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+  | grep -o '"name":"aos\.[^"]*"' | head -5
 ```
 
 ### Docker Deployment (Recommended for Production)
@@ -91,11 +101,13 @@ nano .env
 AOS_GLOBAL_USERNAME=network_admin
 AOS_GLOBAL_PASSWORD=secure_global_password
 
+# Security (recommended):
+AOS_INTERNAL_API_KEY=$(openssl rand -hex 32)
+AOS_ALLOWED_IPS=10.0.0.0/8,192.168.0.0/16,127.0.0.1/32
+
 # Optional - Zone-specific fallback credentials:
 AOS_ZONE1_USERNAME=zone1_admin
 AOS_ZONE1_PASSWORD=zone1_password
-AOS_ZONE2_USERNAME=zone2_admin
-AOS_ZONE2_PASSWORD=zone2_password
 
 # 3. Configure server settings
 cd ..
@@ -109,13 +121,41 @@ docker-compose up -d --build
 # 5. Verify deployment
 docker-compose ps  # Check container status
 docker-compose logs -f  # View logs
-curl http://localhost:8080/healthz  # Test endpoint
+curl http://localhost:8080/healthz  # Health check (no auth)
 
 # 6. View MCP server logs
 docker-compose logs -f aos-mcp-server
+
+# 7. (Optional) Integrate with Open WebUI
+# See OPEN_WEBUI.md for complete integration guide
 ```
 
-## 🛠️ Complete Tool List (18 Tools)
+### Open WebUI Integration (AI Assistant)
+
+**For natural language network management with AI:**
+
+1. **Deploy MCP Server** (using Docker above)
+
+2. **Configure Open WebUI**:
+   - Go to: **Admin Panel → Settings → External Tools**
+   - Click: **"+" (Add MCP Server)**
+   - Configure:
+     ```
+     Type: MCP (Streamable HTTP)
+     Server URL: http://your-mcp-server:8080/mcp/sse
+     Auth: None
+     Name: ALE OmniSwitch Network Tools
+     ```
+
+3. **Start Using**: Ask Open WebUI questions like:
+   - "Show me device facts for switch 192.168.1.100"
+   - "What's the PoE consumption on all ports?"
+   - "Check health status of switch 192.168.2.50"
+
+**📖 Complete Integration Guide**: [OPEN_WEBUI.md](OPEN_WEBUI.md)
+```
+
+## 🛠️ Complete Tool List (19 Tools)
 
 ### Core Operations (3 tools)
 | Tool | Purpose | Output Format |
@@ -157,18 +197,22 @@ docker-compose logs -f aos-mcp-server
 | `aos.health.monitor` | Comprehensive health check | Parsed JSON (CPU, memory, temperature, fans, PSU status) |
 | `aos.chassis.status` | Chassis hardware status | Parsed JSON (modules, power supplies, fans, temperatures) |
 
-### Advanced Protocols (2 tools)
+### Advanced Protocols (3 tools)
 | Tool | Purpose | Output Format |
 |------|---------|---------------|
 | `aos.lacp.info` | LACP/Link aggregation info | Parsed JSON (LAGs, member status, LACP state, issues) |
 | `aos.ntp.status` | NTP synchronization status | Parsed JSON (sync state, stratum, servers, offset, issues) |
+| `aos.dhcp.relay.info` | DHCP relay configuration | Parsed JSON (relay interfaces, servers, statistics) |
 
 
 ## 📖 Tool Usage Examples
 
+> **Note:** All API calls require the `X-Internal-Api-Key` header when `AOS_INTERNAL_API_KEY` is configured.
+
 ### Example 1: Get Device Facts
 ```bash
 curl -s -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "context": {"subject": "admin@company.com", "correlation_id": "req-001"},
@@ -191,6 +235,7 @@ curl -s -X POST http://localhost:8080/v1/tools/call \
 ### Example 2: Check PoE Status
 ```bash
 curl -s -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "context": {"subject": "admin@company.com"},
@@ -204,6 +249,7 @@ curl -s -X POST http://localhost:8080/v1/tools/call \
 ### Example 3: Audit VLANs
 ```bash
 curl -s -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "aos.vlan.audit",
@@ -217,6 +263,7 @@ curl -s -X POST http://localhost:8080/v1/tools/call \
 ### Example 4: Monitor Health
 ```bash
 curl -s -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "aos.health.monitor",
@@ -249,6 +296,17 @@ export AOS_ZONE1_PASSWORD="zone1_password"
 
 export AOS_ZONE2_USERNAME="zone2_admin"
 export AOS_ZONE2_PASSWORD="zone2_password"
+
+# ===== SECURITY SETTINGS (RECOMMENDED FOR PRODUCTION) =====
+
+# Bearer token authentication
+export AOS_INTERNAL_API_KEY="your-secure-random-token-here"
+
+# IP whitelisting (comma-separated CIDRs)
+export AOS_ALLOWED_IPS="10.0.0.0/8,192.168.0.0/16,172.16.0.0/12,127.0.0.1/32"
+
+# Rate limiting (requests per minute per IP)
+export AOS_RATE_LIMIT_PER_MINUTE="60"
 
 # Optional Settings
 export AOS_CONFIG_FILE="./config.yaml"
@@ -386,6 +444,12 @@ AOS_CONFIG_FILE=/app/config.yaml
 
 ### Multi-Layer Security
 
+**Authentication & Access Control**
+- ✅ Bearer token authentication on MCP SSE endpoint
+- ✅ IP whitelisting with CIDR support (RFC1918 private ranges)
+- ✅ Rate limiting per IP address (configurable requests/minute)
+- ✅ Zone-based credential management
+
 **Command Policy Enforcement**
 - ✅ Allowlist-based: Only explicitly permitted commands execute
 - ✅ Regex validation: Pattern matching prevents dangerous operations
@@ -411,8 +475,12 @@ AOS_CONFIG_FILE=/app/config.yaml
 - ✅ VRF-aware operations
 - ✅ Audit logging with correlation IDs
 
+**📖 Complete Security Guide**: [SECURITY.md](SECURITY.md)
+
 ## 📚 Documentation
 
+- **[SECURITY.md](SECURITY.md)** - Complete security guide with production best practices
+- **[OPEN_WEBUI.md](OPEN_WEBUI.md)** - Integration with Open WebUI for AI-assisted network management
 - **[examples/](examples/)** - Complete tool usage examples with curl commands
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
 - **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)** - Architecture and integration patterns
@@ -420,7 +488,7 @@ AOS_CONFIG_FILE=/app/config.yaml
 
 ## 🧪 Verified & Tested
 
-All 18 tools tested on real OmniSwitch hardware (AOS6 & AOS8):
+All 20 tools tested on real OmniSwitch hardware (AOS6 & AOS8):
 
 ```bash
 Core Operations:
@@ -442,7 +510,7 @@ Health & Monitoring:
 ✅ aos.health.monitor     ✅ aos.chassis.status
 
 Advanced Protocols:
-✅ aos.lacp.info          ✅ aos.ntp.status
+✅ aos.lacp.info          ✅ aos.ntp.status          ✅ aos.dhcp.relay.info
 
 Deployment:
 ✅ Native Python execution  ✅ Docker containerization  ✅ Zone-based auth
@@ -516,6 +584,7 @@ grep -A 10 "allow_regex" config.yaml
 
 # Test with basic show command
 curl -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "aos.cli.readonly",
@@ -535,11 +604,12 @@ docker-compose restart
 docker-compose exec aos-mcp-server env | grep AOS_ZONE
 
 # Check which zone is detected for an IP
-# Zone = second octet: 192.168.1.100 → Zone 1
+# Zone = second octet: 10.1.0.100 → Zone 1
 # 10.9.0.100 → Zone 9
 
 # Test global credentials first
 curl -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"tool":"aos.device.facts","args":{"host":"192.168.1.100"},"context":{}}' | jq
 ```
@@ -568,10 +638,10 @@ docker-compose exec aos-mcp-server /bin/bash
 
 ## 📊 Project Statistics
 
-- **~7,000 lines** of production Python code
-- **18 network management tools** with intelligent parsers
-- **8 specialized parsers** (PoE, routing, STP, health, LACP, NTP, VLAN, interface)
-- **18 production tools** for network management
+- **~5,400 lines** of production Python code (modular architecture)
+- **19 network management tools** with intelligent parsers
+- **9 specialized parsers** (PoE, routing, STP, health, LACP, NTP, DHCP, VLAN, interface)
+- **6 tool modules** organized by category (cli, diag, device, audit, network, system)
 - **12+ detailed examples** with real-world scenarios
 - **Full MCP compliance** with protocol validation
 - **100% Docker support** with production configs
@@ -605,6 +675,6 @@ Use it freely for any purpose, commercial or non-commercial.
  ( (__  /__\   ) _)   ) _)  )    (  )  (   )(   )    (  _)(_   )(  ( (__  )__(
   \___)(_)(_) (____)(____)(_/\/\_)(_/\_) (__) (__/\__)(____) (__) \___)(_)(_)
   
-  ALE OmniSwitch MCP Server v1.1.0
+  ALE OmniSwitch MCP Server v1.2.0
   Production-ready network automation for AI assistants
 ```

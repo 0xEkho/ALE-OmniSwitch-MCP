@@ -32,7 +32,7 @@ def extract_zone_from_ip(host: str) -> Optional[int]:
         Zone ID (1-255) or None if not a valid IP or can't extract
         
     Examples:
-        192.168.1.1 → 9
+        10.9.5.10 → 9
         10.1.5.10 → 1
         192.168.1.1 → 168
         switch.example.com → None

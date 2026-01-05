@@ -43,13 +43,18 @@ htmlcov/
 # Logs
 *.log
 server.log
+logs/
+!logs/.gitkeep
 
-# Sensitive data
+# Sensitive data - NEVER commit these
 known_hosts
 *.cfg
 !examples/*.cfg
+config.yaml
 config.local.yaml
 .env
+mcpo-config.json
+deploy/.env
 
 # OS
 .DS_Store

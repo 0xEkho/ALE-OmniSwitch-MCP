@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 
 def parse_show_vrf(output: str) -> List[Dict[str, Any]]:
@@ -52,12 +52,10 @@ def parse_show_ip_routes(output: str, limit: int = None, protocol_filter: str = 
             continue
         
         # Match route line: 0.0.0.0/0            10.255.9.1          36d 3h   OSPF
-        # Age can be multi-part (36d 3h) and protocol is the last field
         parts = line.split()
         if len(parts) >= 3:
             destination = parts[0]
             gateway = parts[1]
-            # Everything from index 2 to second-to-last is age, last is protocol
             if len(parts) == 3:
                 age = None
                 protocol = parts[2]
@@ -65,11 +63,9 @@ def parse_show_ip_routes(output: str, limit: int = None, protocol_filter: str = 
                 age = parts[2]
                 protocol = parts[3]
             else:
-                # Multi-part age like "36d 3h"
                 age = ' '.join(parts[2:-1])
                 protocol = parts[-1]
             
-            # Apply protocol filter if specified
             if protocol_filter and protocol.upper() != protocol_filter.upper():
                 continue
                 
@@ -100,7 +96,6 @@ def parse_show_ip_ospf_interface(output: str) -> List[Dict[str, Any]]:
         if not line or 'Interface' in line or '---' in line:
             continue
         
-        # Match: VLAN-1090             Vlan     1090     0.0.0.0          0.0.0.0          enabled   up    P2P     enabled
         parts = line.split()
         if len(parts) >= 8:
             interfaces.append({
@@ -119,34 +114,26 @@ def parse_show_ip_ospf_interface(output: str) -> List[Dict[str, Any]]:
 
 
 def parse_show_ip_ospf_neighbor(output: str) -> List[Dict[str, Any]]:
-    """Parse 'show ip ospf neighbor' output.
-    
-    Format: IP          Address     Area        Router      Id          State
-            10.255.9.1  0.0.0.0     10.0.0.1    Vlan        1090        Full
-    """
+    """Parse 'show ip ospf neighbor' output."""
     neighbors = []
     lines = output.strip().split('\n')
     
     for line in lines:
         line = line.strip()
-        # Skip empty lines, headers, separators, and totals
         if not line or '---' in line or 'Total' in line:
             continue
-        # Skip header line containing "IP" and "Address"
         if 'IP' in line and 'Address' in line and 'Area' in line:
             continue
             
-        # Format: IP_Address  Address  Area_ID  Router(Device)  Id(Interface)  State
-        # Example: 10.255.9.1  0.0.0.0     10.0.0.1    Vlan        1090        Full
         parts = line.split()
         if len(parts) >= 6:
             neighbors.append({
-                'router_id': parts[0],          # IP
-                'address': parts[1],            # Address
-                'area_id': parts[2],            # Area
-                'device_type': parts[3],        # Router (Vlan)
-                'interface_id': parts[4],       # Id (1090)
-                'state': parts[5]               # State (Full)
+                'router_id': parts[0],
+                'address': parts[1],
+                'area_id': parts[2],
+                'device_type': parts[3],
+                'interface_id': parts[4],
+                'state': parts[5]
             })
     
     return neighbors
@@ -162,7 +149,6 @@ def parse_show_ip_interface(output: str) -> List[Dict[str, Any]]:
         if not line or 'IP Address' in line or '---' in line:
             continue
         
-        # Typical: VLAN-100            10.9.100.1/24    enabled   enabled   forwarding
         parts = line.split()
         if len(parts) >= 3:
             interfaces.append({
@@ -174,62 +160,3 @@ def parse_show_ip_interface(output: str) -> List[Dict[str, Any]]:
             })
     
     return interfaces
-
-
-def parse_show_ip_ospf_area(output: str) -> List[Dict[str, Any]]:
-    """Parse 'show ip ospf area' output.
-    
-    Format:
-        Area Id      AdminStatus      Type       OperStatus 
-    ---------------+-------------+-------------+------------
-    0.0.0.0           enabled      normal       up
-    """
-    areas = []
-    lines = output.strip().split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if not line or 'Area Id' in line or '---' in line:
-            continue
-            
-        parts = line.split()
-        if len(parts) >= 4:
-            areas.append({
-                'area_id': parts[0],
-                'admin_status': parts[1],
-                'type': parts[2],
-                'oper_status': parts[3]
-            })
-    
-    return areas
-
-
-def parse_show_ip_static_routes(output: str) -> List[Dict[str, Any]]:
-    """Parse 'show ip static-routes' output.
-    
-    Format varies but typically:
-    Destination       Gateway         Metric   Distance
-    10.0.0.0/8        10.255.9.1      1        1
-    """
-    routes = []
-    lines = output.strip().split('\n')
-    
-    for line in lines:
-        line = line.strip()
-        if not line or 'Destination' in line or '---' in line or 'No static' in line:
-            continue
-            
-        parts = line.split()
-        if len(parts) >= 2:
-            route_entry = {
-                'destination': parts[0],
-                'gateway': parts[1] if len(parts) > 1 else None
-            }
-            if len(parts) >= 3:
-                route_entry['metric'] = parts[2]
-            if len(parts) >= 4:
-                route_entry['distance'] = parts[3]
-                
-            routes.append(route_entry)
-    
-    return routes

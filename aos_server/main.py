@@ -3,16 +3,20 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from .api_models import ToolCallRequest, ToolCallResponse, ToolsListResponse, MCPMetadata
 from .config import AppConfig, EnvSettings, DeviceDefaults, load_config
 from .inventory import InventoryStore
 from .ssh_runner import SSHExecutionError, SSHRunner
 from .tools import call_tool, tool_infos
+from .mcp_sse import mcp_sse_endpoint
 
 
 logger = logging.getLogger("aos_server")
@@ -83,7 +87,22 @@ def create_app() -> FastAPI:
 
     state = AppState(env=env, cfg=cfg, inv=inv, runner=runner, zone_resolver=zone_resolver)
 
-    app = FastAPI(title="AOS Server (for MCP Platform)", version="0.1.2.1")
+    # Initialize rate limiter
+    limiter = Limiter(key_func=get_remote_address, default_limits=[f"{env.rate_limit_per_minute}/minute"])
+
+    app = FastAPI(
+        title="ALE OmniSwitch MCP Server",
+        version="1.2.0",
+        description="MCP server for Alcatel-Lucent Enterprise OmniSwitch network devices. "
+                    "Provides 20 production-ready network management tools for AI assistants.",
+        docs_url="/docs",  # Swagger UI
+        redoc_url="/redoc",  # ReDoc
+        openapi_url="/openapi.json",  # OpenAPI spec
+    )
+
+    # Add rate limiter to app state
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     def get_state() -> AppState:
         return state
@@ -96,6 +115,42 @@ def create_app() -> FastAPI:
     async def mcp_metadata():
         """MCP platform metadata endpoint for capability discovery."""
         return MCPMetadata().model_dump()
+
+    @app.post("/mcp/sse")
+    @limiter.limit(f"{env.rate_limit_per_minute}/minute")
+    async def mcp_sse(request: Request, st: AppState = Depends(get_state)):
+        """MCP SSE endpoint for Open WebUI native integration.
+        
+        This endpoint implements the MCP HTTP Streamable protocol using
+        Server-Sent Events (SSE) for compatibility with Open WebUI v0.6.31+.
+        
+        Security features:
+        - IP whitelisting via AOS_ALLOWED_IPS environment variable
+        - Bearer token authentication via Authorization header
+        - Rate limiting per IP address
+        
+        Open WebUI Configuration:
+        1. Go to Admin Panel → Settings → External Tools
+        2. Add MCP Server:
+           - Type: MCP (Streamable HTTP)
+           - Server URL: http://your-server:8080/mcp/sse
+           - Auth: Bearer <your-token> (if AOS_INTERNAL_API_KEY is set)
+        3. Save and restart Open WebUI
+        """
+        # Extract Bearer token if configured
+        api_key = None
+        if st.env.internal_api_key:
+            api_key = st.env.internal_api_key.get_secret_value()
+        
+        return await mcp_sse_endpoint(
+            request=request,
+            cfg=st.cfg,
+            inv=st.inv,
+            runner=st.runner,
+            zone_resolver=st.zone_resolver,
+            allowed_ips=st.env.allowed_ips,
+            api_key=api_key,
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -120,11 +175,56 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="Missing or invalid X-Internal-Api-Key")
 
     @app.post("/v1/tools/list", dependencies=[Depends(require_internal_api_key)])
-    async def tools_list(st: AppState = Depends(get_state)):
-        return ToolsListResponse(tools=tool_infos(st.cfg)).model_dump()
+    async def tools_list(
+        request: Request,
+        st: AppState = Depends(get_state),
+    ):
+        """List all available tools.
+        
+        Accepts 'compact' and 'ultra_compact' flags via:
+        - Query params: ?compact=true&ultra_compact=false
+        - JSON body: {"compact": true, "ultra_compact": false}
+        
+        Modes:
+        - ultra_compact=true: Only tool names (19 lines, minimal tokens)
+        - compact=true: Names + short descriptions (80 lines, default)
+        - compact=false: Full schemas with input/output (518 lines, for devs)
+        """
+        # Try to get flags from body first, fallback to query params
+        body = {}
+        try:
+            body = await request.json()
+        except:
+            pass
+        
+        # Check query params
+        query_params = dict(request.query_params)
+        
+        # Priority: body > query params > defaults
+        ultra_compact = body.get('ultra_compact') or query_params.get('ultra_compact') == 'true'
+        compact = body.get('compact', True) if 'compact' in body else (query_params.get('compact', 'true') != 'false')
+        
+        tools = tool_infos(st.cfg)
+        
+        if ultra_compact:
+            # Ultra minimal: only names (for LLM discovery to avoid token explosion)
+            return {"tools": [t.name for t in tools]}
+        
+        if compact:
+            # Return minimal version for LLMs (avoid token explosion)
+            minimal_tools = [
+                {
+                    "name": t.name,
+                    "description": t.description.split('.')[0] + '.' if '.' in t.description else t.description[:80]
+                }
+                for t in tools
+            ]
+            return {"tools": minimal_tools}
+        
+        return ToolsListResponse(tools=tools).model_dump()
 
     @app.post("/v1/tools/call", dependencies=[Depends(require_internal_api_key)])
-    async def tools_call(req: ToolCallRequest, st: AppState = Depends(get_state)):
+    async def tools_call(req: ToolCallRequest, request: Request, st: AppState = Depends(get_state)):
         # If configured, fail closed when context is missing (platform integration bug).
         if st.env.require_authz_context:
             if not req.context or (not req.context.subject and not req.context.scopes):
@@ -141,43 +241,13 @@ def create_app() -> FastAPI:
                 zone_resolver=st.zone_resolver,
             )
             
-            # Build MCP content blocks for rich rendering
-            content_blocks = []
-            
-            # Extract content if tool provides it in data
-            if "content" in data and data["content"]:
-                content_blocks = data.pop("content")  # Remove from data, use at root level
-            elif req.tool == "aos.cli.readonly" and data.get("stdout"):
-                content_blocks.append({
-                    "type": "text",
-                    "text": data["stdout"]
-                })
-            elif req.tool == "aos.diag.poe" and data.get("ports"):
-                # Format PoE data as structured text
-                poe_text = f"**PoE Status for {data.get('host', 'unknown')}**\n\n"
-                if data.get("chassis_summary"):
-                    cs = data["chassis_summary"]
-                    poe_text += "**Chassis Summary:**\n"
-                    poe_text += f"- Power Consumed: {cs.get('actual_power_consumed_watts', 0)}W\n"
-                    poe_text += f"- Budget Remaining: {cs.get('power_budget_remaining_watts', 0)}W\n"
-                    poe_text += f"- Total Budget: {cs.get('total_power_budget_watts', 0)}W\n\n"
-                poe_text += f"**Ports:** {len(data['ports'])} ports analyzed\n"
-                content_blocks.append({"type": "text", "text": poe_text})
-            elif req.tool == "aos.device.facts" and data.get("facts"):
-                facts = data["facts"]
-                facts_text = f"**Device Facts: {data.get('host', 'unknown')}**\n\n"
-                if facts.get("model"):
-                    facts_text += f"Model: {facts['model']}\n"
-                if facts.get("serial_number"):
-                    facts_text += f"Serial: {facts['serial_number']}\n"
-                if facts.get("software_version"):
-                    facts_text += f"Software: {facts['software_version']}\n"
-                content_blocks.append({"type": "text", "text": facts_text})
+            # Extract content blocks if provided by tool
+            content_blocks = data.pop("content", None) if "content" in data else None
             
             return ToolCallResponse(
                 status="ok",
                 data=data,
-                content=content_blocks if content_blocks else None,
+                content=content_blocks,
                 meta={"tool": req.tool}
             ).model_dump()
         except HTTPException:
@@ -206,7 +276,7 @@ def create_app() -> FastAPI:
                 error={"code": "ssh_error", "message": str(e)},
                 meta={"tool": req.tool},
             ).model_dump()
-        except Exception:
+        except Exception as e:
             logger.exception("tool_call_failed", extra={"tool": req.tool})
             return ToolCallResponse(
                 status="error",

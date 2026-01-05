@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "ale-omniswitch": {
+      "command": "python",
+      "args": [
+        "-m",
+        "uvicorn",
+        "aos_server.main:create_app",
+        "--factory",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080"
+      ],
+      "env": {
+        "AOS_GLOBAL_USERNAME": "admin",
+        "AOS_GLOBAL_PASSWORD": "your_secure_password",
+        "AOS_API_KEY": "generate_a_secure_api_key_here",
+        "AOS_CONFIG_FILE": "./config.yaml",
+        "AOS_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 # Metadata
 LABEL maintainer="0xEkho"
 LABEL description="ALE OmniSwitch MCP Server - Network automation via Model Context Protocol"
-LABEL version="1.1.0"
+LABEL version="1.2.0"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,8 +24,9 @@ COPY config.example.yaml /app/config.example.yaml
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -e .
 
-# Create directories for runtime data
-RUN mkdir -p /app/data /app/logs && \
+# Create directories and files for runtime data
+RUN mkdir -p /app/data && \
+    touch /app/known_hosts && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user

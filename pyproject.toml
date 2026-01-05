@@ -13,6 +13,10 @@ dependencies = [
   "pydantic-settings>=2.2",
   "PyYAML>=6.0",
   "paramiko>=3.4",
+  "cryptography>=44.0",
+  "python-dotenv>=1.0",
+  "structlog>=24.4",
+  "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

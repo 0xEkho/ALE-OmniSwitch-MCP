@@ -23,6 +23,7 @@ Discover all network interfaces on a switch with comprehensive data: status, VLA
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -119,6 +120,7 @@ curl -s ... | jq '.data.interfaces[] | select(.poe.status == "Delivering Power")
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {

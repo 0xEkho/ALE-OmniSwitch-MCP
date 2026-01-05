@@ -22,6 +22,7 @@
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -122,6 +123,7 @@ Different devices require different reboot times:
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -142,6 +144,7 @@ curl -s \
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -169,6 +172,7 @@ for port in "${PORTS[@]}"; do
   echo "Restarting PoE on port $port..."
   curl -s \
     -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
     -X POST "http://localhost:8080/v1/tools/call" \
     -d "{
       \"context\": {
@@ -241,6 +245,7 @@ sleep 30
 # Then check PoE status
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {

@@ -23,6 +23,7 @@ Lookup devices by MAC address, IP address, or VLAN. Returns location (port, VLAN
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -90,7 +91,7 @@ curl -s \
     "host": "192.168.1.100",
     "entries": [
       {
-        "ip_address": "10.1.0.25",
+        "ip_address": "10.0.1.25",
         "mac_address": "a4:83:e7:12:34:56",
         "vlan": 100,
         "port": "1/1/8",
@@ -99,7 +100,7 @@ curl -s \
     ],
     "total_found": 1,
     "duration_ms": 920,
-    "commands_executed": ["show arp 10.1.0.25"]
+    "commands_executed": ["show arp 10.0.1.25"]
   }
 }
 ```
@@ -156,6 +157,7 @@ curl -s \
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -164,7 +166,7 @@ curl -s \
     "tool": "aos.mac.lookup",
     "args": {
       "host": "192.168.1.100",
-      "ip_address": "10.1.0.25"
+      "ip_address": "10.0.1.25"
     }
   }' | jq
 ```
@@ -174,6 +176,7 @@ curl -s \
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "tool": "aos.mac.lookup",

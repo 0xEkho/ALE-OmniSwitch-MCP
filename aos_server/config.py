@@ -17,6 +17,12 @@ class EnvSettings(BaseSettings):
     # If true, reject requests that don't include authz context (subject + scopes)
     require_authz_context: bool = Field(default=False, alias="AOS_REQUIRE_AUTHZ_CONTEXT")
 
+    # IP whitelisting (comma-separated CIDRs, e.g. "10.0.0.0/8,127.0.0.1/32")
+    allowed_ips: Optional[str] = Field(default=None, alias="AOS_ALLOWED_IPS")
+
+    # Rate limiting (requests per minute per IP)
+    rate_limit_per_minute: int = Field(default=60, alias="AOS_RATE_LIMIT_PER_MINUTE")
+
     model_config = {
         "extra": "ignore",
         "case_sensitive": True,
@@ -142,7 +148,7 @@ class SSHConfig(BaseModel):
 
     # Command execution control
     default_command_timeout_s: int = 30
-    max_output_bytes: int = 200_000  # cap output to avoid exfil / memory blow-ups
+    max_output_bytes: int = 500_000  # cap output (increased for large responses)
 
     # Optional commands executed before the user command (e.g., disable paging)
     pre_commands: List[str] = Field(default_factory=list)

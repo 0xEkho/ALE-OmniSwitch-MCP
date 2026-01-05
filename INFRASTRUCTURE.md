@@ -36,7 +36,7 @@ ALE-OmniSwitch-MCP is designed as a **secure gateway layer** between AI assistan
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ALE-OmniSwitch-MCP Server                     │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Tool Registry (18 production tools - v1.1.0)            │   │
+│  │  Tool Registry (20 production tools - v1.2.0)            │   │
 │  │  ─────────────────────────────────────────────────────   │   │
 │  │  Core Operations:                                        │   │
 │  │  • aos.cli.readonly    - Execute read-only CLI commands  │   │
@@ -63,6 +63,7 @@ ALE-OmniSwitch-MCP is designed as a **secure gateway layer** between AI assistan
 │  │  • aos.chassis.status  - Chassis hardware status         │   │
 │  │  • aos.ntp.status      - NTP synchronization status      │   │
 │  │  • aos.lacp.info       - Link Aggregation status         │   │
+│  │  • aos.dhcp.relay.info - DHCP Relay configuration        │   │
 │  │                                                           │   │
 │  │  Diagnostics:                                            │   │
 │  │  • aos.diag.ping       - Network connectivity test       │   │
@@ -540,12 +541,11 @@ validate_network:
 
 ## 📈 Future Capabilities
 
-### Near-Term (v1.2+)
+### Near-Term (v1.4+)
 
 - **Bulk operations**: Execute tools across multiple switches concurrently
 - **Streaming output**: WebSocket support for real-time command output
 - **Advanced parsing**: AOS8 SPB-M topology discovery
-- **DHCP relay monitoring**: Zone-wide DHCP relay health checks
 
 ### Long-Term (v2.0+)
 
@@ -558,10 +558,10 @@ validate_network:
 
 - **[README.md](README.md)**: Quick start guide and feature overview
 - **[CHANGELOG.md](CHANGELOG.md)**: Version history and release notes
-- **[examples/](examples/)**: Detailed usage examples for all 18 tools
+- **[examples/](examples/)**: Detailed usage examples for all 20 tools
 - **[deploy/README.md](deploy/README.md)**: Docker deployment guide
-- **[RELEASE_v1.1.0.md](RELEASE_v1.1.0.md)**: Complete v1.1.0 release notes
+
 
 ---
 
-**ALE-OmniSwitch-MCP v1.1.0** provides a production-ready, secure, and scalable foundation for AI-driven network operations on ALE OmniSwitch infrastructure, with zone-based authentication for enterprise-scale deployments.
+**ALE-OmniSwitch-MCP v1.2.0** provides a production-ready, secure, and scalable foundation for AI-driven network operations on ALE OmniSwitch infrastructure, with zone-based authentication for enterprise-scale deployments.

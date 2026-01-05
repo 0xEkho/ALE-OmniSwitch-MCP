@@ -22,6 +22,7 @@ Get detailed information about a specific switch port including administrative s
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {
@@ -90,6 +91,7 @@ curl -s \
 for port in 1 2 3 4 5; do
   curl -s \
     -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
     -X POST "http://localhost:8080/v1/tools/call" \
     -d "{
       \"context\": {
@@ -110,6 +112,7 @@ done
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {

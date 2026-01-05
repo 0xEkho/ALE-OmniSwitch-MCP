@@ -22,6 +22,7 @@ Audit Spanning Tree Protocol configuration, topology, and port states. Identifie
 ```bash
 curl -s \
   -H "Content-Type: application/json" \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -X POST "http://localhost:8080/v1/tools/call" \
   -d '{
     "context": {

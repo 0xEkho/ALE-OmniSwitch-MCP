@@ -248,11 +248,12 @@ docker-compose -f deploy/docker-compose.yaml up -d
 # Container health
 docker-compose -f deploy/docker-compose.yaml ps
 
-# HTTP health endpoint
+# HTTP health endpoint (no auth required)
 curl http://localhost:8080/healthz
 
-# Test tool execution
+# Test tool execution (requires auth)
 curl -X POST http://localhost:8080/v1/tools/call \
+  -H "X-Internal-Api-Key: $AOS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "context": {"subject": "healthcheck"},

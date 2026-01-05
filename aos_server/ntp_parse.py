@@ -41,11 +41,16 @@ def parse_show_ntp_status(output: str) -> Dict[str, Any]:
         if re.search(r'not.*synchronized|sync.*no', line, re.IGNORECASE):
             result["synchronized"] = False
         
-        # Mode (client/server/peer)
-        if "Mode:" in line:
-            match = re.search(r'Mode:\s*(client|server|peer|broadcast)', line, re.IGNORECASE)
-            if match:
-                result["mode"] = match.group(1).lower()
+        # Mode (client/server/peer) - supports "Client mode:" format
+        if "mode:" in line.lower():
+            if re.search(r'client.*mode.*enabled|mode.*client', line, re.IGNORECASE):
+                result["mode"] = "client"
+            elif re.search(r'server.*mode.*enabled|mode.*server', line, re.IGNORECASE):
+                result["mode"] = "server"
+            else:
+                match = re.search(r'Mode:\s*(client|server|peer|broadcast)', line, re.IGNORECASE)
+                if match:
+                    result["mode"] = match.group(1).lower()
         
         # Stratum
         if "Stratum:" in line:
@@ -53,8 +58,8 @@ def parse_show_ntp_status(output: str) -> Dict[str, Any]:
             if match:
                 result["stratum"] = int(match.group(1))
         
-        # Reference clock
-        if "Reference Clock:" in line or "Reference:" in line:
+        # Reference clock - supports "Server reference:" format
+        if "reference" in line.lower():
             match = re.search(r':\s*(\d+\.\d+\.\d+\.\d+)', line)
             if match:
                 result["reference_clock"] = match.group(1)
@@ -92,7 +97,7 @@ def parse_show_ntp_client_server_list(output: str) -> List[Dict[str, Any]]:
     
     for line in lines:
         # Format: Server IP      Status        Stratum  Delay(ms)  Reachability  Preferred
-        # Example: 10.1.0.200    synchronized  2        2.5        255           *
+        # Example: 10.0.1.100    synchronized  2        2.5        255           *
         match = re.search(
             r'(\d+\.\d+\.\d+\.\d+)\s+'                    # IP address
             r'(synchronized|reachable|unreachable|inactive)\s+'  # Status
@@ -119,61 +124,6 @@ def parse_show_ntp_client_server_list(output: str) -> List[Dict[str, Any]]:
             servers.append(server)
     
     return servers
-
-
-def parse_show_ntp_peers(output: str) -> List[Dict[str, Any]]:
-    """
-    Parse 'show ntp peers' command output.
-    
-    Returns list of NTP peer associations.
-    """
-    peers = []
-    
-    lines = output.strip().split('\n')
-    
-    for line in lines:
-        # Peer format (various possible formats)
-        # Example: * 10.1.0.200  .GPS.  2  64  377  2.5  0.125  0.250
-        match = re.search(
-            r'([*+\-x\s])\s*'                           # Selection indicator
-            r'(\d+\.\d+\.\d+\.\d+)\s+'                  # IP address
-            r'([\w.]+)\s+'                              # Reference ID
-            r'(\d+)\s+'                                 # Stratum
-            r'(\d+)\s+'                                 # Poll interval
-            r'(\d+)\s+'                                 # Reach
-            r'([\d.]+)\s*'                             # Delay
-            r'([\d.]+)?\s*'                            # Offset (optional)
-            r'([\d.]+)?',                              # Jitter (optional)
-            line
-        )
-        
-        if match:
-            sel, ip, ref_id, stratum, poll, reach, delay, offset, jitter = match.groups()
-            
-            # Decode selection indicator
-            status_map = {
-                '*': 'synchronized',
-                '+': 'candidate',
-                '-': 'outlier',
-                'x': 'falseticker',
-                ' ': 'rejected'
-            }
-            
-            peer = {
-                "ip": ip,
-                "status": status_map.get(sel.strip(), 'unknown'),
-                "reference_id": ref_id,
-                "stratum": int(stratum),
-                "poll_interval": int(poll),
-                "reachability": int(reach),
-                "delay_ms": float(delay),
-                "offset_ms": float(offset) if offset else None,
-                "jitter_ms": float(jitter) if jitter else None
-            }
-            
-            peers.append(peer)
-    
-    return peers
 
 
 def analyze_ntp_status(ntp_status: Dict[str, Any], servers: List[Dict[str, Any]]) -> List[str]:

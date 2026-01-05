@@ -13,62 +13,156 @@ import re
 from typing import Any, Dict, List, Optional
 
 
-def parse_show_dhcp_relay_interface(output: str) -> List[Dict[str, Any]]:
+def parse_show_dhcp_relay_interface(output: str) -> Dict[str, Any]:
     """
     Parse 'show ip dhcp relay interface' command output.
     
-    Returns DHCP relay configuration per interface.
+    Returns DHCP relay configuration including global settings and per-interface mappings.
+    
+    Example output:
+    IP DHCP Relay :
+      DHCP Relay Admin Status        = Enable,
+      Forward Delay(seconds)         = 0,
+      Max number of hops             = 16,
+      Relay Agent Information        = Disabled,
+      ...
+      From Interface VLAN-0100 to Server 10.0.1.50
+      From Interface VLAN-0100 to Server 10.0.1.51
     """
-    interfaces = []
+    result = {
+        "admin_status": "disabled",
+        "forward_delay": 0,
+        "max_hops": 16,
+        "agent_information": False,
+        "pxe_support": False,
+        "relay_mode": "unknown",
+        "interfaces": []
+    }
     
     lines = output.strip().split('\n')
-    current_interface = None
+    interfaces_map = {}  # Group servers by interface
     
     for line in lines:
-        # Interface line: "Interface: vlan 100"
-        if_match = re.search(r'Interface:\s*(\S+(?:\s+\d+)?)', line, re.IGNORECASE)
-        if if_match:
-            if current_interface:
-                interfaces.append(current_interface)
-            
-            current_interface = {
-                "interface": if_match.group(1),
-                "admin_state": None,
-                "oper_state": None,
-                "servers": [],
-                "agent_information": False,
-                "statistics": {}
-            }
-            continue
+        line_stripped = line.strip()
         
-        if current_interface:
-            # Admin state
-            if "Admin State:" in line or "Administrative State:" in line:
-                match = re.search(r'State:\s*(enabled|disabled)', line, re.IGNORECASE)
-                if match:
-                    current_interface["admin_state"] = match.group(1).lower()
-            
-            # Operational state
-            if "Oper State:" in line or "Operational State:" in line:
-                match = re.search(r'State:\s*(up|down)', line, re.IGNORECASE)
-                if match:
-                    current_interface["oper_state"] = match.group(1).lower()
-            
-            # Server IP
-            server_match = re.search(r'Server:\s*(\d+\.\d+\.\d+\.\d+)', line, re.IGNORECASE)
-            if server_match:
-                current_interface["servers"].append(server_match.group(1))
-            
-            # Agent information option 82
-            if "Agent Information:" in line or "Option 82:" in line:
-                if re.search(r'enabled|yes', line, re.IGNORECASE):
-                    current_interface["agent_information"] = True
+        # Global admin status
+        if "Admin Status" in line:
+            if re.search(r'=\s*(Enable|Enabled)', line, re.IGNORECASE):
+                result["admin_status"] = "enabled"
+            else:
+                result["admin_status"] = "disabled"
+        
+        # Forward delay
+        delay_match = re.search(r'Forward Delay.*=\s*(\d+)', line, re.IGNORECASE)
+        if delay_match:
+            result["forward_delay"] = int(delay_match.group(1))
+        
+        # Max hops
+        hops_match = re.search(r'Max.*hops.*=\s*(\d+)', line, re.IGNORECASE)
+        if hops_match:
+            result["max_hops"] = int(hops_match.group(1))
+        
+        # Agent information (Option 82)
+        if "Agent Information" in line or "Relay Agent Information" in line:
+            if re.search(r'=\s*(Enable|Enabled)', line, re.IGNORECASE):
+                result["agent_information"] = True
+        
+        # PXE support
+        if "PXE" in line:
+            if re.search(r'=\s*(Enable|Enabled)', line, re.IGNORECASE):
+                result["pxe_support"] = True
+        
+        # Relay mode
+        if "Relay Mode" in line:
+            mode_match = re.search(r'=\s*(.+?)(?:,|$)', line)
+            if mode_match:
+                result["relay_mode"] = mode_match.group(1).strip()
+        
+        # Per-interface relay: "From Interface VLAN-0100 to Server 10.0.1.50"
+        iface_match = re.search(r'From Interface\s+(\S+)\s+to Server\s+(\d+\.\d+\.\d+\.\d+)', line, re.IGNORECASE)
+        if iface_match:
+            iface_name, server_ip = iface_match.groups()
+            if iface_name not in interfaces_map:
+                interfaces_map[iface_name] = {
+                    "interface": iface_name,
+                    "servers": [],
+                    "admin_state": "enabled"  # If listed, it's enabled
+                }
+            interfaces_map[iface_name]["servers"].append(server_ip)
     
-    # Add last interface
-    if current_interface:
-        interfaces.append(current_interface)
+    # Convert interfaces map to list
+    result["interfaces"] = list(interfaces_map.values())
     
-    return interfaces
+    return result
+
+
+def parse_show_dhcp_relay_counters(output: str) -> Dict[str, Any]:
+    """
+    Parse 'show ip dhcp relay counters' command output.
+    
+    Returns DHCP packet counters by message type.
+    
+    Example output:
+    DHCP Packets:
+    DHCP Discover Packets                          : 11467589,
+    DHCP Offer Packets                             : 2584497,
+    DHCP Request Packets                           : 23010116,
+    DHCP ACK Packets                               : 10848485,
+    DHCP NACK Packets                              : 755693,
+    DHCP Release Packets                           : 215,
+    DHCP Decline Packets                           : 628,
+    DHCP Inform Packets                            : 131917,
+    """
+    counters = {
+        "discover": 0,
+        "offer": 0,
+        "request": 0,
+        "ack": 0,
+        "nack": 0,
+        "release": 0,
+        "decline": 0,
+        "inform": 0,
+        "renew": 0,
+        "total_client_requests": 0,
+        "total_server_responses": 0
+    }
+    
+    for line in output.split('\n'):
+        # Match "DHCP <Type> Packets : <count>"
+        match = re.search(r'DHCP\s+(\w+)\s+Packets?\s*:\s*(\d+)', line, re.IGNORECASE)
+        if match:
+            pkt_type = match.group(1).lower()
+            count = int(match.group(2))
+            
+            if pkt_type == "discover":
+                counters["discover"] = count
+            elif pkt_type == "offer":
+                counters["offer"] = count
+            elif pkt_type == "request":
+                counters["request"] = count
+            elif pkt_type == "ack":
+                counters["ack"] = count
+            elif pkt_type == "nack":
+                counters["nack"] = count
+            elif pkt_type == "release":
+                counters["release"] = count
+            elif pkt_type == "decline":
+                counters["decline"] = count
+            elif pkt_type == "inform":
+                counters["inform"] = count
+            elif pkt_type == "renew":
+                counters["renew"] = count
+    
+    # Calculate totals
+    counters["total_client_requests"] = (
+        counters["discover"] + counters["request"] + 
+        counters["release"] + counters["decline"] + counters["inform"]
+    )
+    counters["total_server_responses"] = (
+        counters["offer"] + counters["ack"] + counters["nack"]
+    )
+    
+    return counters
 
 
 def parse_show_dhcp_relay_statistics(output: str) -> Dict[str, Any]:
@@ -144,106 +238,54 @@ def parse_show_dhcp_relay_statistics(output: str) -> Dict[str, Any]:
     return stats
 
 
-def parse_show_dhcp_relay_counters(output: str) -> Dict[str, Dict[str, int]]:
+def analyze_dhcp_relay(relay_config: Dict[str, Any], 
+                       counters: Dict[str, Any]) -> List[str]:
     """
-    Parse 'show ip dhcp relay counters' command output.
-    
-    Returns detailed DHCP packet counters per interface.
-    """
-    counters = {}
-    
-    lines = output.strip().split('\n')
-    current_interface = None
-    
-    for line in lines:
-        # Interface identifier
-        if_match = re.search(r'(vlan\s+\d+|[\w/]+):', line, re.IGNORECASE)
-        if if_match:
-            current_interface = if_match.group(1).strip()
-            counters[current_interface] = {
-                "discover": 0,
-                "offer": 0,
-                "request": 0,
-                "ack": 0,
-                "nak": 0,
-                "release": 0,
-                "inform": 0,
-                "decline": 0
-            }
-            continue
-        
-        if current_interface:
-            # DHCP message types
-            for msg_type in ["discover", "offer", "request", "ack", "nak", 
-                            "release", "inform", "decline"]:
-                match = re.search(rf'{msg_type}:\s*(\d+)', line, re.IGNORECASE)
-                if match:
-                    counters[current_interface][msg_type.lower()] = int(match.group(1))
-    
-    return counters
-
-
-def analyze_dhcp_relay(interfaces: List[Dict[str, Any]], 
-                       stats: Dict[str, Any]) -> List[str]:
-    """
-    Analyze DHCP relay configuration and statistics to detect issues.
+    Analyze DHCP relay configuration and counters to detect issues.
     
     Returns list of detected issues.
     """
     issues = []
     
-    # Check if relay is configured
-    if not interfaces:
-        issues.append("No DHCP relay interfaces configured")
+    # Check if relay is enabled
+    if relay_config.get("admin_status") != "enabled":
+        issues.append("DHCP Relay is disabled")
         return issues
     
-    # Check each interface
+    interfaces = relay_config.get("interfaces", [])
+    
+    # Check if any interfaces configured
+    if not interfaces:
+        issues.append("DHCP Relay enabled but no interfaces configured")
+        return issues
+    
+    # Check each interface has servers
     for iface in interfaces:
         iface_name = iface.get("interface", "unknown")
-        
-        # Admin enabled but oper down
-        if iface.get("admin_state") == "enabled" and iface.get("oper_state") == "down":
-            issues.append(f"{iface_name}: DHCP relay enabled but interface down")
-        
-        # No servers configured
         if not iface.get("servers"):
             issues.append(f"{iface_name}: No DHCP servers configured")
-        
-        # Check statistics if available
-        iface_stats = iface.get("statistics", {})
-        
-        # High drop rate
-        req_rcv = iface_stats.get("requests_received", 0)
-        req_drop = iface_stats.get("requests_dropped", 0)
-        if req_rcv > 0:
-            drop_rate = (req_drop / req_rcv) * 100
-            if drop_rate > 5:
-                issues.append(
-                    f"{iface_name}: High DHCP packet drop rate ({drop_rate:.1f}%)"
-                )
     
-    # Global statistics analysis
-    if stats:
-        # Calculate overall drop rate
-        total_req = stats.get("requests_received", 0)
-        total_drop = stats.get("requests_dropped", 0) + stats.get("replies_dropped", 0)
+    # Analyze counters if available
+    if counters:
+        # Check for high NACK rate (indicates IP exhaustion or config issues)
+        ack = counters.get("ack", 0)
+        nack = counters.get("nack", 0)
+        if ack > 0 and nack > 0:
+            nack_rate = (nack / (ack + nack)) * 100
+            if nack_rate > 5:
+                issues.append(f"High DHCP NACK rate: {nack_rate:.1f}% - check IP pool exhaustion")
         
-        if total_req > 0:
-            overall_drop_rate = (total_drop / total_req) * 100
-            if overall_drop_rate > 5:
-                issues.append(
-                    f"Global DHCP drop rate high: {overall_drop_rate:.1f}%"
-                )
+        # Check for decline packets (duplicate IP issues)
+        decline = counters.get("decline", 0)
+        if decline > 100:
+            issues.append(f"DHCP Decline packets: {decline} - possible duplicate IP conflicts")
         
-        # Check for errors
-        errors = stats.get("errors", 0)
-        if errors > 0:
-            issues.append(f"DHCP relay errors detected: {errors}")
-        
-        # Check if forwarding is happening
-        req_fwd = stats.get("requests_forwarded", 0)
-        rep_fwd = stats.get("replies_forwarded", 0)
-        if total_req > 100 and (req_fwd == 0 or rep_fwd == 0):
-            issues.append("DHCP packets received but not forwarded - check server connectivity")
+        # Check request to offer ratio
+        discover = counters.get("discover", 0)
+        offer = counters.get("offer", 0)
+        if discover > 1000 and offer > 0:
+            offer_rate = (offer / discover) * 100
+            if offer_rate < 90:
+                issues.append(f"Low DHCP offer rate: {offer_rate:.1f}% - server may be unreachable")
     
     return issues

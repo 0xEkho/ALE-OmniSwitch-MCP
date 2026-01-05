@@ -53,7 +53,7 @@ class MCPMetadata(BaseModel):
     """MCP platform metadata endpoint response."""
     protocol_version: str = "1.0"
     server_name: str = "aos-server"
-    server_version: str = "0.2.0"
+    server_version: str = "1.2.0"
     vendor: str = "Alcatel-Lucent Enterprise"
     capabilities: List[str] = Field(default_factory=lambda: [
         "tools",
